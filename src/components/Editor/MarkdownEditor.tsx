@@ -3,6 +3,7 @@ import CodeMirror from '@uiw/react-codemirror';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
 import { EditorView, keymap } from '@codemirror/view';
+import { search, openSearchPanel, findNext, findPrevious } from '@codemirror/search';
 import type { Extension } from '@codemirror/state';
 import ContextMenu from './ContextMenu';
 import type { ContextMenuItem } from './ContextMenu';
@@ -23,6 +24,10 @@ export interface MarkdownEditorAPI {
   toggleBlockquote: () => void;
   toggleLink: () => void;
   toggleImage: () => void;
+  openSearch: () => void;
+  openReplace: () => void;
+  findNext: () => void;
+  findPrevious: () => void;
 }
 
 interface MarkdownEditorProps {
@@ -140,6 +145,32 @@ const MarkdownEditor = forwardRef<MarkdownEditorAPI, MarkdownEditorProps>(
       toggleImage: () => {
         const view = getView();
         if (view) insertFormatting(view, '![', '图片描述', false, '](url)');
+      },
+      openSearch: () => {
+        const view = getView();
+        if (view) openSearchPanel(view);
+      },
+      openReplace: () => {
+        const view = getView();
+        if (view) {
+          openSearchPanel(view);
+          // 打开后自动切换到替换模式
+          setTimeout(() => {
+            const panel = view.dom.querySelector('.cm-search');
+            if (panel) {
+              const replaceBtn = panel.querySelector('[name="replace"]') as HTMLButtonElement;
+              replaceBtn?.click();
+            }
+          }, 50);
+        }
+      },
+      findNext: () => {
+        const view = getView();
+        if (view) findNext(view);
+      },
+      findPrevious: () => {
+        const view = getView();
+        if (view) findPrevious(view);
       },
     }), [getView]);
 
@@ -500,6 +531,7 @@ const MarkdownEditor = forwardRef<MarkdownEditorAPI, MarkdownEditorProps>(
 
     const extensions: Extension[] = [
       markdown({ base: markdownLanguage, codeLanguages: languages }),
+      search({ top: true }),
       keymap.of([
         {
           key: 'Ctrl-b',

@@ -194,6 +194,8 @@ export default function App() {
         onBlockquote={() => editorRef.current?.toggleBlockquote()}
         onLink={() => editorRef.current?.toggleLink()}
         onImage={() => editorRef.current?.toggleImage()}
+        onSearch={() => editorRef.current?.openSearch()}
+        onReplace={() => editorRef.current?.openReplace()}
         onToggleTheme={toggleTheme}
         onToggleMode={cycleMode}
         currentMode={mode}

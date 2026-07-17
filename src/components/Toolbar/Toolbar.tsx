@@ -5,7 +5,7 @@ import {
   IconCode, IconCodeInline,
   IconListUnordered, IconListOrdered, IconQuote,
   IconLink, IconImage,
-  IconSun, IconMoon, IconEye,
+  IconSun, IconMoon, IconEye, IconSearch, IconReplace,
 } from '../Icons';
 import styles from './Toolbar.module.css';
 
@@ -25,6 +25,8 @@ interface ToolbarProps {
   onBlockquote: () => void;
   onLink: () => void;
   onImage: () => void;
+  onSearch: () => void;
+  onReplace: () => void;
   onToggleTheme: () => void;
   onToggleMode: () => void;
   currentMode: EditorMode;
@@ -38,6 +40,7 @@ export default function Toolbar({
   onCodeBlock, onInlineCode,
   onUnorderedList, onOrderedList, onBlockquote,
   onLink, onImage,
+  onSearch, onReplace,
   onToggleTheme, onToggleMode,
   currentMode, isDark,
 }: ToolbarProps) {
@@ -68,7 +71,18 @@ export default function Toolbar({
           <span className={styles.label}>另存为</span>
         </button>
       </div>
-
+      <div className={styles.separator} />
+      {/* 搜索与替换 */}
+      <div className={styles.group}>
+        <button className={styles.button} onClick={onSearch} title="搜索 (Ctrl+F)">
+          <IconSearch size={16} />
+          <span className={styles.label}>搜索</span>
+        </button>
+        <button className={styles.button} onClick={onReplace} title="替换 (Ctrl+H)">
+          <IconReplace size={16} />
+          <span className={styles.label}>替换</span>
+        </button>
+      </div>
       <div className={styles.separator} />
 
       {/* 文本格式 */}
@@ -119,6 +133,10 @@ export default function Toolbar({
           <IconImage size={16} />
         </button>
       </div>
+
+      <div className={styles.separator} />
+
+      
 
       <div className={styles.spacer} />
 
