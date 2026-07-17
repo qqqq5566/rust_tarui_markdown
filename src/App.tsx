@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { listen } from '@tauri-apps/api/event';
-import { getCurrentWindow } from '@tauri-apps/api/window';
+import { listen, emit } from '@tauri-apps/api/event';
+import { confirm } from '@tauri-apps/plugin-dialog';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 
 import { useMarkdown } from './hooks/useMarkdown';
@@ -56,31 +56,30 @@ export default function App() {
     document.title = `${filename}${modified} - Rust Markdown 编辑器`;
   }, [filePath, isModified]);
 
+  // 用 ref 保存最新 isModified，避免闭包过期问题
+  const isModifiedRef = useRef(isModified);
+  isModifiedRef.current = isModified;
+
   // Window close handling - check for unsaved changes
   useEffect(() => {
-    const setupListener = async () => {
-      const unlisten = await listen('close-requested', async () => {
-        if (isModified) {
-          const { confirm } = await import('@tauri-apps/plugin-dialog');
-          const shouldClose = await confirm(
-            '有未保存的更改，确定不保存就关闭吗？',
-            { title: '未保存的更改', kind: 'warning' },
-          );
-          if (shouldClose) {
-            await getCurrentWindow().destroy();
-          }
-        } else {
-          await getCurrentWindow().destroy();
+    const unlistenPromise = listen('close-requested', async () => {
+      if (isModifiedRef.current) {
+        const shouldClose = await confirm(
+          '有未保存的更改，确定不保存就关闭吗？',
+          { title: '未保存的更改', kind: 'warning' },
+        );
+        if (shouldClose) {
+          await emit('confirm-close');
         }
-      });
-      return unlisten;
-    };
+      } else {
+        await emit('confirm-close');
+      }
+    });
 
-    const promise = setupListener();
     return () => {
-      promise.then(unlisten => unlisten());
+      unlistenPromise.then(fn => fn());
     };
-  }, [isModified]);
+  }, []);
 
   // Global keyboard shortcuts
   useEffect(() => {
@@ -90,7 +89,6 @@ export default function App() {
       if (ctrl && e.key === 'n') {
         e.preventDefault();
         if (isModified) {
-          const { confirm } = await import('@tauri-apps/plugin-dialog');
           const shouldDiscard = await confirm(
             '有未保存的更改，确定丢弃吗？',
             { title: '新建文件', kind: 'warning' },
@@ -104,7 +102,6 @@ export default function App() {
       if (ctrl && e.key === 'o') {
         e.preventDefault();
         if (isModified) {
-          const { confirm } = await import('@tauri-apps/plugin-dialog');
           const shouldDiscard = await confirm(
             '有未保存的更改，确定打开其他文件吗？',
             { title: '打开文件', kind: 'warning' },
@@ -146,7 +143,6 @@ export default function App() {
   // Toolbar action handlers
   const handleNew = useCallback(async () => {
     if (isModified) {
-      const { confirm } = await import('@tauri-apps/plugin-dialog');
       const shouldDiscard = await confirm(
         '有未保存的更改，确定丢弃吗？',
         { title: '新建文件', kind: 'warning' },
@@ -159,7 +155,6 @@ export default function App() {
 
   const handleOpen = useCallback(async () => {
     if (isModified) {
-      const { confirm } = await import('@tauri-apps/plugin-dialog');
       const shouldDiscard = await confirm(
         '有未保存的更改，确定打开其他文件吗？',
         { title: '打开文件', kind: 'warning' },

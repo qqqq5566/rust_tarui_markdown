@@ -144,6 +144,73 @@ cargo tauri icon <你的PNG图标路径>
 
 建议使用 512×512 或更大的 PNG 图片作为源图。
 
+## 常见问题
+
+### 点击关闭按钮无响应
+
+**现象**：点击窗口右上角 X 按钮，程序没有反应，无法退出。
+
+**原因**：关闭事件形成了死循环：
+
+```
+用户点 X → Rust 阻止关闭 → 前端弹确认框
+    → 用户确认 → 前端调 window.close()
+    → 又触发 Rust 阻止关闭 → 死循环 🔁
+```
+
+**解决方案**（已内置在本项目中）：
+
+1. **Rust 后端** (`src-tauri/src/lib.rs`)：用 `AtomicBool` 标记前端是否已确认关闭，确认后直接放行：
+
+```rust
+let close_confirmed = Arc::new(AtomicBool::new(false));
+
+window.on_window_event(move |event| {
+    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+        if close_confirmed.load(Ordering::SeqCst) {
+            return; // 前端已确认，直接放行
+        }
+        api.prevent_close();
+        let _ = window.emit("close-requested", ());
+    }
+});
+
+// 监听前端确认事件
+window.listen("confirm-close", move |_| {
+    close_confirmed.store(true, Ordering::SeqCst);
+    let _ = window.close();
+});
+```
+
+2. **React 前端** (`src/App.tsx`)：确认后 emit 事件而非直接调 `window.close()`：
+
+```typescript
+import { listen, emit } from '@tauri-apps/api/event';
+import { confirm } from '@tauri-apps/plugin-dialog';
+
+useEffect(() => {
+  const p = listen('close-requested', async () => {
+    if (isModified) {
+      const ok = await confirm('有未保存的更改，确定不保存就关闭吗？', {
+        title: '未保存的更改', kind: 'warning',
+      });
+      if (ok) await emit('confirm-close');
+    } else {
+      await emit('confirm-close');
+    }
+  });
+  return () => { p.then(fn => fn()); };
+}, []);
+```
+
+### 打开 EXE 时弹出 CMD 窗口
+
+**解决方案**：在 `src-tauri/src/main.rs` 顶部添加：
+
+```rust
+#![windows_subsystem = "windows"]
+```
+
 ## License
 
 MIT
