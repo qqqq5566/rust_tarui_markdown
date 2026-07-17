@@ -34,6 +34,12 @@ export default function App() {
     mode: 'find' | 'replace';
   }>({ open: false, mode: 'find' });
 
+  /** 打开搜索对话框，如果在纯预览模式则自动切换到分屏 */
+  const openSearchDialog = useCallback((dialogMode: 'find' | 'replace') => {
+    setMode(prev => (prev === 'preview' ? 'split' : prev));
+    setSearchDialog({ open: true, mode: dialogMode });
+  }, []);
+
   // File operation callbacks
   const handleFileOpened = useCallback(
     (newContent: string, path: string) => {
@@ -133,12 +139,12 @@ export default function App() {
       // Ctrl+F → 打开搜索对话框
       if (ctrl && e.key === 'f') {
         e.preventDefault();
-        setSearchDialog({ open: true, mode: 'find' });
+        openSearchDialog('find');
       }
       // Ctrl+H → 打开替换对话框
       if (ctrl && e.key === 'h') {
         e.preventDefault();
-        setSearchDialog({ open: true, mode: 'replace' });
+        openSearchDialog('replace');
       }
       // F3 → 查找下一个（委托给 SearchDialog 内部处理）
       // Shift+F3 → 查找上一个（委托给 SearchDialog 内部处理）
@@ -158,7 +164,7 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [activeId, openNewTab, openFile, saveFile, saveFileAs, closeTab, toggleTheme]);
+  }, [activeId, openNewTab, openFile, saveFile, saveFileAs, closeTab, toggleTheme, openSearchDialog]);
 
   // Toolbar handlers
   const handleNew = useCallback(() => {
@@ -218,8 +224,8 @@ export default function App() {
         onBlockquote={() => editorRef.current?.toggleBlockquote()}
         onLink={() => editorRef.current?.toggleLink()}
         onImage={() => editorRef.current?.toggleImage()}
-        onSearch={() => setSearchDialog({ open: true, mode: 'find' })}
-        onReplace={() => setSearchDialog({ open: true, mode: 'replace' })}
+        onSearch={() => openSearchDialog('find')}
+        onReplace={() => openSearchDialog('replace')}
         onToggleTheme={toggleTheme}
         onToggleMode={cycleMode}
         currentMode={mode}
