@@ -1,0 +1,29 @@
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.mainArea {
+  flex: 1;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.resizeHandle {
+  width: 4px;
+  background: var(--border-color);
+  transition: background-color 0.15s ease;
+  cursor: col-resize;
+  flex-shrink: 0;
+}
+
+.resizeHandle:hover,
+.resizeHandle[data-resize-handle-active] {
+  background: var(--accent-color);
+}
+
+.hiddenPanel {
+  display: none;
+}
