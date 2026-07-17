@@ -8,6 +8,14 @@ export interface FileState {
   isModified: boolean;
 }
 
+export interface TabState {
+  id: string;
+  path: string | null;
+  content: string;
+  isModified: boolean;
+  title: string;
+}
+
 export interface DocumentStats {
   wordCount: number;
   charCount: number;

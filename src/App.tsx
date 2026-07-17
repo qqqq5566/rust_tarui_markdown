@@ -3,13 +3,14 @@ import { listen, emit } from '@tauri-apps/api/event';
 import { confirm } from '@tauri-apps/plugin-dialog';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 
-import { useMarkdown } from './hooks/useMarkdown';
+import { useTabs } from './hooks/useTabs';
 import { useFileOperations } from './hooks/useFileOperations';
 import { useTheme } from './hooks/useTheme';
 import MarkdownEditor from './components/Editor/MarkdownEditor';
 import type { MarkdownEditorAPI } from './components/Editor/MarkdownEditor';
 import MarkdownPreview from './components/Preview/MarkdownPreview';
 import Toolbar from './components/Toolbar/Toolbar';
+import TabBar from './components/TabBar/TabBar';
 import StatusBar from './components/StatusBar/StatusBar';
 
 import type { EditorMode } from './types';
@@ -18,109 +19,105 @@ import styles from './App.module.css';
 export default function App() {
   const [mode, setMode] = useState<EditorMode>('split');
 
-  const { content, filePath, isModified, setContent, updateFilePath, markClean, resetFileState, stats } = useMarkdown();
+  const {
+    tabs, activeTab, activeId, stats,
+    updateActiveContent, updateActivePath, markActiveClean,
+    openNewTab, closeTab, switchTab, replaceActiveTab,
+  } = useTabs();
   const { toggleTheme, isDark } = useTheme();
   const editorRef = useRef<MarkdownEditorAPI>(null);
 
+  // File operation callbacks
   const handleFileOpened = useCallback(
     (newContent: string, path: string) => {
-      resetFileState();
-      // Need to set content and path without marking as modified
-      setContent(newContent);
-      updateFilePath(path);
-      // Override the isModified that setContent set
-      markClean();
+      // If current tab is empty & unmodified, replace it
+      const tab = activeTab;
+      if (!tab.isModified && tab.content === '' && !tab.path) {
+        replaceActiveTab(path, newContent);
+      } else {
+        openNewTab(path, newContent);
+      }
     },
-    [setContent, updateFilePath, markClean, resetFileState],
+    [activeTab, replaceActiveTab, openNewTab],
   );
 
   const handleFileSaved = useCallback(
     (path: string) => {
-      updateFilePath(path);
-      markClean();
+      updateActivePath(path);
+      markActiveClean();
     },
-    [updateFilePath, markClean],
+    [updateActivePath, markActiveClean],
   );
 
-  const { openFile, saveFile, saveFileAs, newFile } = useFileOperations({
+  const { openFile, saveFile, saveFileAs } = useFileOperations({
     onFileOpened: handleFileOpened,
     onFileSaved: handleFileSaved,
   });
 
-  // Update window title when file changes
+  // Update window title
   useEffect(() => {
-    const filename = filePath
-      ? filePath.split(/[/\\]/).pop() || '未命名'
-      : '未命名';
-    const modified = isModified ? ' •' : '';
+    const filename = activeTab.title;
+    const modified = activeTab.isModified ? ' •' : '';
     document.title = `${filename}${modified} - Rust Markdown 编辑器`;
-  }, [filePath, isModified]);
+  }, [activeTab.title, activeTab.isModified]);
 
-  // 用 ref 保存最新 isModified，避免闭包过期问题
-  const isModifiedRef = useRef(isModified);
-  isModifiedRef.current = isModified;
+  // Window close — check all tabs
+  const tabsRef = useRef(tabs);
+  tabsRef.current = tabs;
 
-  // Window close handling - check for unsaved changes
   useEffect(() => {
-    const unlistenPromise = listen('close-requested', async () => {
-      if (isModifiedRef.current) {
-        const shouldClose = await confirm(
+    const p = listen('close-requested', async () => {
+      const hasUnsaved = tabsRef.current.some(t => t.isModified);
+      if (hasUnsaved) {
+        const ok = await confirm(
           '有未保存的更改，确定不保存就关闭吗？',
           { title: '未保存的更改', kind: 'warning' },
         );
-        if (shouldClose) {
-          await emit('confirm-close');
-        }
+        if (ok) await emit('confirm-close');
       } else {
         await emit('confirm-close');
       }
     });
-
-    return () => {
-      unlistenPromise.then(fn => fn());
-    };
+    return () => { p.then(fn => fn()); };
   }, []);
 
   // Global keyboard shortcuts
+  const activeTabRef = useRef(activeTab);
+  activeTabRef.current = activeTab;
+
   useEffect(() => {
     const handleKeyDown = async (e: KeyboardEvent) => {
       const ctrl = e.ctrlKey || e.metaKey;
+      const t = activeTabRef.current;
 
       if (ctrl && e.key === 'n') {
         e.preventDefault();
-        if (isModified) {
-          const shouldDiscard = await confirm(
-            '有未保存的更改，确定丢弃吗？',
-            { title: '新建文件', kind: 'warning' },
-          );
-          if (!shouldDiscard) return;
-        }
-        resetFileState();
-        newFile();
+        openNewTab(null, '');
       }
-
       if (ctrl && e.key === 'o') {
         e.preventDefault();
-        if (isModified) {
-          const shouldDiscard = await confirm(
-            '有未保存的更改，确定打开其他文件吗？',
-            { title: '打开文件', kind: 'warning' },
-          );
-          if (!shouldDiscard) return;
-        }
         openFile();
       }
-
       if (ctrl && e.key === 's' && !e.shiftKey) {
         e.preventDefault();
-        await saveFile(content);
+        await saveFile(t.content, t.path);
       }
-
       if (ctrl && e.key === 's' && e.shiftKey) {
         e.preventDefault();
-        await saveFileAs(content);
+        await saveFileAs(t.content);
       }
-
+      if (ctrl && e.key === 'w') {
+        e.preventDefault();
+        if (tabsRef.current.length <= 1) return; // 最后一个 tab 不关闭
+        if (t.isModified) {
+          const ok = await confirm(
+            `"${t.title}" 有未保存的更改，确定关闭吗？`,
+            { title: '关闭标签页', kind: 'warning' },
+          );
+          if (!ok) return;
+        }
+        closeTab(activeId);
+      }
       if (ctrl && e.shiftKey && e.key === 'P') {
         e.preventDefault();
         setMode(prev => {
@@ -129,7 +126,6 @@ export default function App() {
           return modes[(idx + 1) % modes.length];
         });
       }
-
       if (ctrl && e.shiftKey && e.key === 'T') {
         e.preventDefault();
         toggleTheme();
@@ -138,39 +134,36 @@ export default function App() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isModified, content, resetFileState, newFile, openFile, saveFile, saveFileAs, toggleTheme]);
+  }, [activeId, openNewTab, openFile, saveFile, saveFileAs, closeTab, toggleTheme]);
 
-  // Toolbar action handlers
-  const handleNew = useCallback(async () => {
-    if (isModified) {
-      const shouldDiscard = await confirm(
-        '有未保存的更改，确定丢弃吗？',
-        { title: '新建文件', kind: 'warning' },
-      );
-      if (!shouldDiscard) return;
-    }
-    resetFileState();
-    newFile();
-  }, [isModified, resetFileState, newFile]);
+  // Toolbar handlers
+  const handleNew = useCallback(() => {
+    openNewTab(null, '');
+  }, [openNewTab]);
 
-  const handleOpen = useCallback(async () => {
-    if (isModified) {
-      const shouldDiscard = await confirm(
-        '有未保存的更改，确定打开其他文件吗？',
-        { title: '打开文件', kind: 'warning' },
-      );
-      if (!shouldDiscard) return;
-    }
+  const handleOpen = useCallback(() => {
     openFile();
-  }, [isModified, openFile]);
+  }, [openFile]);
 
   const handleSave = useCallback(async () => {
-    await saveFile(content);
-  }, [content, saveFile]);
+    await saveFile(activeTab.content, activeTab.path);
+  }, [activeTab, saveFile]);
 
   const handleSaveAs = useCallback(async () => {
-    await saveFileAs(content);
-  }, [content, saveFileAs]);
+    await saveFileAs(activeTab.content);
+  }, [activeTab, saveFileAs]);
+
+  const handleCloseTab = useCallback(async (tabId: string) => {
+    const tab = tabs.find(t => t.id === tabId);
+    if (tab?.isModified) {
+      const ok = await confirm(
+        `"${tab.title}" 有未保存的更改，确定关闭吗？`,
+        { title: '关闭标签页', kind: 'warning' },
+      );
+      if (!ok) return;
+    }
+    closeTab(tabId);
+  }, [tabs, closeTab]);
 
   const cycleMode = useCallback(() => {
     setMode(prev => {
@@ -205,7 +198,14 @@ export default function App() {
         onToggleMode={cycleMode}
         currentMode={mode}
         isDark={isDark}
-        currentFilePath={filePath}
+        currentFilePath={activeTab.path}
+      />
+
+      <TabBar
+        tabs={tabs}
+        activeId={activeId}
+        onSwitch={switchTab}
+        onClose={handleCloseTab}
       />
 
       <div className={styles.mainArea}>
@@ -216,9 +216,10 @@ export default function App() {
             className={!showEditor ? styles.hiddenPanel : undefined}
           >
             <MarkdownEditor
+              key={activeId}
               ref={editorRef}
-              value={content}
-              onChange={setContent}
+              value={activeTab.content}
+              onChange={updateActiveContent}
               isDark={isDark}
             />
           </Panel>
@@ -230,15 +231,15 @@ export default function App() {
             minSize={20}
             className={!showPreview ? styles.hiddenPanel : undefined}
           >
-            <MarkdownPreview content={content} />
+            <MarkdownPreview content={activeTab.content} />
           </Panel>
         </PanelGroup>
       </div>
 
       <StatusBar
-        filePath={filePath}
+        filePath={activeTab.path}
         stats={stats}
-        isModified={isModified}
+        isModified={activeTab.isModified}
       />
     </div>
   );

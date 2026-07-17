@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback } from 'react';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
 
@@ -9,7 +9,6 @@ interface UseFileOperationsOptions {
 
 export function useFileOperations({ onFileOpened, onFileSaved }: UseFileOperationsOptions) {
   const [error, setError] = useState<string | null>(null);
-  const currentPathRef = useRef<string | null>(null);
 
   const clearError = useCallback(() => setError(null), []);
 
@@ -25,7 +24,6 @@ export function useFileOperations({ onFileOpened, onFileSaved }: UseFileOperatio
       });
       if (selected) {
         const content = await readTextFile(selected);
-        currentPathRef.current = selected;
         onFileOpened(content, selected);
       }
     } catch (e) {
@@ -33,12 +31,12 @@ export function useFileOperations({ onFileOpened, onFileSaved }: UseFileOperatio
     }
   }, [onFileOpened]);
 
-  const saveFile = useCallback(async (content: string): Promise<boolean> => {
+  const saveFile = useCallback(async (content: string, currentPath: string | null): Promise<boolean> => {
     try {
       setError(null);
-      if (currentPathRef.current) {
-        await writeTextFile(currentPathRef.current, content);
-        onFileSaved(currentPathRef.current);
+      if (currentPath) {
+        await writeTextFile(currentPath, content);
+        onFileSaved(currentPath);
         return true;
       } else {
         return await saveFileAs(content);
@@ -61,7 +59,6 @@ export function useFileOperations({ onFileOpened, onFileSaved }: UseFileOperatio
       });
       if (selected) {
         await writeTextFile(selected, content);
-        currentPathRef.current = selected;
         onFileSaved(selected);
         return true;
       }
@@ -72,17 +69,10 @@ export function useFileOperations({ onFileOpened, onFileSaved }: UseFileOperatio
     }
   }, [onFileSaved]);
 
-  const newFile = useCallback(() => {
-    setError(null);
-    currentPathRef.current = null;
-  }, []);
-
   return {
     openFile,
     saveFile,
     saveFileAs,
-    newFile,
-    currentPath: currentPathRef.current,
     error,
     clearError,
   };
