@@ -8,6 +8,7 @@ import { useFileOperations } from './hooks/useFileOperations';
 import { useTheme } from './hooks/useTheme';
 import MarkdownEditor from './components/Editor/MarkdownEditor';
 import type { MarkdownEditorAPI } from './components/Editor/MarkdownEditor';
+import SearchDialog from './components/Search/SearchDialog';
 import MarkdownPreview from './components/Preview/MarkdownPreview';
 import Toolbar from './components/Toolbar/Toolbar';
 import TabBar from './components/TabBar/TabBar';
@@ -26,6 +27,12 @@ export default function App() {
   } = useTabs();
   const { toggleTheme, isDark } = useTheme();
   const editorRef = useRef<MarkdownEditorAPI>(null);
+
+  // ── 自定义搜索对话框状态 ──
+  const [searchDialog, setSearchDialog] = useState<{
+    open: boolean;
+    mode: 'find' | 'replace';
+  }>({ open: false, mode: 'find' });
 
   // File operation callbacks
   const handleFileOpened = useCallback(
@@ -60,6 +67,11 @@ export default function App() {
     const modified = activeTab.isModified ? ' •' : '';
     document.title = `${filename}${modified} - Rust Markdown 编辑器`;
   }, [activeTab.title, activeTab.isModified]);
+
+  // 切换标签页时关闭搜索对话框（因为 EditorView 引用变化了）
+  useEffect(() => {
+    setSearchDialog(prev => prev.open ? { open: false, mode: 'find' } : prev);
+  }, [activeId]);
 
   // Window close — check all tabs
   const tabsRef = useRef(tabs);
@@ -118,6 +130,18 @@ export default function App() {
         }
         closeTab(activeId);
       }
+      // Ctrl+F → 打开搜索对话框
+      if (ctrl && e.key === 'f') {
+        e.preventDefault();
+        setSearchDialog({ open: true, mode: 'find' });
+      }
+      // Ctrl+H → 打开替换对话框
+      if (ctrl && e.key === 'h') {
+        e.preventDefault();
+        setSearchDialog({ open: true, mode: 'replace' });
+      }
+      // F3 → 查找下一个（委托给 SearchDialog 内部处理）
+      // Shift+F3 → 查找上一个（委托给 SearchDialog 内部处理）
       if (ctrl && e.shiftKey && e.key === 'P') {
         e.preventDefault();
         setMode(prev => {
@@ -194,8 +218,8 @@ export default function App() {
         onBlockquote={() => editorRef.current?.toggleBlockquote()}
         onLink={() => editorRef.current?.toggleLink()}
         onImage={() => editorRef.current?.toggleImage()}
-        onSearch={() => editorRef.current?.openSearch()}
-        onReplace={() => editorRef.current?.openReplace()}
+        onSearch={() => setSearchDialog({ open: true, mode: 'find' })}
+        onReplace={() => setSearchDialog({ open: true, mode: 'replace' })}
         onToggleTheme={toggleTheme}
         onToggleMode={cycleMode}
         currentMode={mode}
@@ -243,6 +267,16 @@ export default function App() {
         stats={stats}
         isModified={activeTab.isModified}
       />
+
+      {/* ── Notepad++ 风格浮动搜索对话框 ── */}
+      {searchDialog.open && editorRef.current?.getView() && (
+        <SearchDialog
+          view={editorRef.current!.getView()!}
+          isDark={isDark}
+          initialMode={searchDialog.mode}
+          onClose={() => setSearchDialog(prev => ({ ...prev, open: false }))}
+        />
+      )}
     </div>
   );
 }

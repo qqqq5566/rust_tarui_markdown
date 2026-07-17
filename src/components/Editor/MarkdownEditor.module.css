@@ -10,3 +10,15 @@
 .editorContainer :global(.cm-scroller) {
   overflow: auto;
 }
+
+/* ── 自定义搜索高亮（SearchDialog 使用） ── */
+.editorContainer :global(.cm-search-highlight) {
+  background-color: rgba(255, 213, 0, 0.35);
+  border-radius: 2px;
+}
+
+.editorContainer :global(.cm-search-highlight-current) {
+  background-color: rgba(255, 152, 0, 0.5);
+  border-radius: 2px;
+  border-bottom: 2px solid #ff6d00;
+}

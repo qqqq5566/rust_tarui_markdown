@@ -1,0 +1,346 @@
+/* ===================================================
+   SearchDialog — Notepad++ 风格浮动搜索对话框
+   =================================================== */
+
+.dialog {
+  position: fixed;
+  top: 80px;
+  right: 24px;
+  width: 420px;
+  max-height: calc(100vh - 120px);
+  display: flex;
+  flex-direction: column;
+  border-radius: 10px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.18), 0 2px 6px rgba(0,0,0,0.1);
+  font-size: 13px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  z-index: 1000;
+  overflow: hidden;
+  user-select: none;
+  border: 1px solid;
+  transition: background-color 0.2s, border-color 0.2s, color 0.2s;
+}
+
+/* ── 亮色主题 ── */
+.light {
+  background: #ffffff;
+  color: #333;
+  border-color: #d4d4d8;
+}
+.light .header { background: #f0f0f0; border-bottom-color: #e0e0e0; }
+.light .tab { color: #666; }
+.light .tab:hover { background: #e4e4e7; color: #333; }
+.light .activeTab { color: #2563eb; border-bottom-color: #2563eb; }
+.light .input { background: #fafafa; border-color: #d4d4d8; color: #333; }
+.light .input:focus { border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37,99,235,0.12); }
+.light .historyDropdown { background: #fff; border-color: #d4d4d8; }
+.light .historyItem { color: #333; }
+.light .historyItem:hover { background: #e8f0fe; }
+.light .checkLabel { color: #555; }
+.light .actionBtn { background: #f5f5f5; border-color: #d4d4d8; color: #333; }
+.light .actionBtn:hover { background: #e8e8e8; }
+.light .primaryBtn { background: #2563eb; border-color: #2563eb; color: #fff; }
+.light .primaryBtn:hover { background: #1d4ed8; }
+.light .dangerBtn { background: #ef4444; border-color: #ef4444; color: #fff; }
+.light .dangerBtn:hover { background: #dc2626; }
+.light .matchInfo { color: #888; }
+.light .resultsPanel { border-top-color: #e0e0e0; }
+.light .resultsHeader { background: #f5f5f5; border-bottom-color: #e0e0e0; }
+.light .resultItem { border-bottom-color: #f0f0f0; }
+.light .resultItem:hover { background: #f0f4ff; }
+.light .resultItemActive { background: #dbeafe; }
+.light .resultLine { color: #999; }
+.light mark { background: #fbbf24; color: #000; }
+.light .closeBtn { color: #999; }
+.light .closeBtn:hover { background: #fee2e2; color: #ef4444; }
+.light .historyBtn { color: #999; }
+.light .historyBtn:hover { background: #e4e4e7; }
+
+/* ── 暗色主题 ── */
+.dark {
+  background: #2d2d2d;
+  color: #d4d4d4;
+  border-color: #444;
+}
+.dark .header { background: #383838; border-bottom-color: #444; }
+.dark .tab { color: #999; }
+.dark .tab:hover { background: #444; color: #d4d4d4; }
+.dark .activeTab { color: #569cd6; border-bottom-color: #569cd6; }
+.dark .input { background: #1e1e1e; border-color: #555; color: #d4d4d4; }
+.dark .input:focus { border-color: #569cd6; box-shadow: 0 0 0 2px rgba(86,156,214,0.15); }
+.dark .historyDropdown { background: #2d2d2d; border-color: #555; }
+.dark .historyItem { color: #d4d4d4; }
+.dark .historyItem:hover { background: #3a3a3a; }
+.dark .checkLabel { color: #bbb; }
+.dark .actionBtn { background: #3c3c3c; border-color: #555; color: #d4d4d4; }
+.dark .actionBtn:hover { background: #4a4a4a; }
+.dark .primaryBtn { background: #569cd6; border-color: #569cd6; color: #fff; }
+.dark .primaryBtn:hover { background: #4a8cc7; }
+.dark .dangerBtn { background: #ef4444; border-color: #ef4444; color: #fff; }
+.dark .dangerBtn:hover { background: #dc2626; }
+.dark .matchInfo { color: #999; }
+.dark .resultsPanel { border-top-color: #444; }
+.dark .resultsHeader { background: #383838; border-bottom-color: #444; }
+.dark .resultItem { border-bottom-color: #3a3a3a; }
+.dark .resultItem:hover { background: #383838; }
+.dark .resultItemActive { background: #1e3a5f; }
+.dark .resultLine { color: #888; }
+.dark mark { background: #f59e0b; color: #000; }
+.dark .closeBtn { color: #888; }
+.dark .closeBtn:hover { background: #4a2020; color: #f87171; }
+.dark .historyBtn { color: #888; }
+.dark .historyBtn:hover { background: #444; }
+
+/* ── 标题栏 ── */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px;
+  cursor: move;
+  border-bottom: 1px solid;
+  min-height: 38px;
+  flex-shrink: 0;
+}
+
+.tabs {
+  display: flex;
+  gap: 0;
+}
+
+.tab {
+  padding: 8px 18px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 13px;
+  font-family: inherit;
+  border-bottom: 2px solid transparent;
+  transition: all 0.15s;
+}
+
+.activeTab {
+  font-weight: 600;
+  border-bottom: 2px solid;
+}
+
+.closeBtn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 4px;
+  font-size: 16px;
+  transition: all 0.15s;
+}
+
+.historyBtn {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 3px;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+/* ── 字段行 ── */
+.fieldRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+}
+
+.fieldLabel {
+  font-size: 13px;
+  white-space: nowrap;
+  min-width: 52px;
+  text-align: right;
+  font-weight: 500;
+}
+
+.input {
+  flex: 1;
+  padding: 5px 8px;
+  border-radius: 5px;
+  border: 1px solid;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.inputWrapper {
+  flex: 1;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.inputWrapper .input {
+  padding-right: 28px;
+}
+
+.inputWrapper .historyBtn {
+  position: absolute;
+  right: 2px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/* ── 历史下拉 ── */
+.historyDropdown {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  border: 1px solid;
+  border-radius: 0 0 6px 6px;
+  max-height: 160px;
+  overflow-y: auto;
+  z-index: 10;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.historyItem {
+  display: block;
+  width: 100%;
+  padding: 6px 10px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── 选项行 ── */
+.optionsRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 12px 6px;
+}
+
+.checkLabel {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.checkLabel input[type="checkbox"] {
+  accent-color: #2563eb;
+  width: 14px;
+  height: 14px;
+}
+
+/* ── 操作按钮 ── */
+.actionsRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 6px 12px;
+}
+
+.actionBtn {
+  padding: 5px 12px;
+  border-radius: 5px;
+  border: 1px solid;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.primaryBtn {
+  font-weight: 600;
+}
+
+.dangerBtn {
+  font-weight: 600;
+}
+
+/* ── 匹配信息 ── */
+.matchInfo {
+  padding: 4px 12px 8px;
+  font-size: 12px;
+  font-style: italic;
+}
+
+/* ── 结果面板 ── */
+.resultsPanel {
+  border-top: 1px solid;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 300px;
+  overflow: hidden;
+}
+
+.resultsHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  border-bottom: 1px solid;
+  flex-shrink: 0;
+}
+
+.resultsList {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.resultItem {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  padding: 4px 12px;
+  border: none;
+  border-bottom: 1px solid;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  font-size: 12px;
+  font-family: 'Cascadia Code', 'JetBrains Mono', 'Consolas', monospace;
+  transition: background-color 0.1s;
+}
+
+.resultItem:last-child {
+  border-bottom: none;
+}
+
+.resultLine {
+  flex-shrink: 0;
+  font-size: 11px;
+  min-width: 42px;
+}
+
+.resultText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resultText mark {
+  border-radius: 2px;
+  padding: 0 1px;
+}
