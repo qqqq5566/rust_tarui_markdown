@@ -1,4 +1,4 @@
-import { useMemo, useCallback, useState, useRef } from 'react';
+import { forwardRef, useMemo, useCallback, useState, useRef } from 'react';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import hljs from 'highlight.js';
@@ -53,7 +53,8 @@ function copyToClipboard(text: string): boolean {
   }
 }
 
-export default function MarkdownPreview({ content }: MarkdownPreviewProps) {
+const MarkdownPreview = forwardRef<HTMLDivElement, MarkdownPreviewProps>(
+  function MarkdownPreview({ content }, ref) {
   const html = useMemo(() => renderMarkdown(content), [content]);
   const contentRef = useRef<HTMLDivElement>(null);
 
@@ -136,7 +137,7 @@ export default function MarkdownPreview({ content }: MarkdownPreviewProps) {
   }
 
   return (
-    <div className={styles.previewContainer}>
+    <div ref={ref} className={styles.previewContainer}>
       <div
         ref={contentRef}
         className={styles.previewContent}
@@ -154,4 +155,6 @@ export default function MarkdownPreview({ content }: MarkdownPreviewProps) {
       )}
     </div>
   );
-}
+});
+
+export default MarkdownPreview;

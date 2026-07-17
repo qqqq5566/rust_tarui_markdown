@@ -6,6 +6,7 @@ import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { useTabs } from './hooks/useTabs';
 import { useFileOperations } from './hooks/useFileOperations';
 import { useTheme } from './hooks/useTheme';
+import { useScrollSync } from './hooks/useScrollSync';
 import MarkdownEditor from './components/Editor/MarkdownEditor';
 import type { MarkdownEditorAPI } from './components/Editor/MarkdownEditor';
 import SearchDialog from './components/Search/SearchDialog';
@@ -39,6 +40,14 @@ export default function App() {
     setMode(prev => (prev === 'preview' ? 'split' : prev));
     setSearchDialog({ open: true, mode: dialogMode });
   }, []);
+
+  // ── 编辑区 ↔ 预览区 滚动同步 ──
+  const previewScrollRef = useRef<HTMLDivElement>(null);
+  useScrollSync(
+    () => editorRef.current?.getView()?.scrollDOM,
+    previewScrollRef,
+    mode === 'split',
+  );
 
   // File operation callbacks
   const handleFileOpened = useCallback(
@@ -263,7 +272,7 @@ export default function App() {
             minSize={20}
             className={!showPreview ? styles.hiddenPanel : undefined}
           >
-            <MarkdownPreview content={activeTab.content} />
+            <MarkdownPreview ref={previewScrollRef} content={activeTab.content} />
           </Panel>
         </PanelGroup>
       </div>
