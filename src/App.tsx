@@ -1,6 +1,8 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { listen, emit } from '@tauri-apps/api/event';
 import { confirm } from '@tauri-apps/plugin-dialog';
+import { stat, readTextFile } from '@tauri-apps/plugin-fs';
+import { useFileWatcher } from './hooks/useFileWatcher';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 
 import { useTabs } from './hooks/useTabs';
@@ -21,13 +23,14 @@ import type { EditorMode } from './types';
 import styles from './App.module.css';
 
 export default function App() {
-  const [mode, setMode] = useState<EditorMode>('split');
+  const [mode, setMode] = useState<EditorMode>('edit');
 
   const {
     tabs, activeTab, activeId, stats,
     updateActiveContent, updateActivePath, markActiveClean,
     openNewTab, closeTab, switchTab, replaceActiveTab,
     persistSession,
+    updateTabContent, updateTabMtime, updateActiveMtime,
   } = useTabs();
   const { toggleTheme, isDark } = useTheme();
   const editorRef = useRef<MarkdownEditorAPI>(null);
@@ -59,24 +62,36 @@ export default function App() {
 
   // File operation callbacks
   const handleFileOpened = useCallback(
-    (newContent: string, path: string) => {
+    async (newContent: string, path: string) => {
+      // 获取文件 mtime
+      let mtime: number | undefined;
+      try {
+        const info = await stat(path);
+        if (info.mtime) mtime = info.mtime.getTime();
+      } catch { /* ignore */ }
+
       // If current tab is empty & unmodified, replace it
       const tab = activeTab;
       if (!tab.isModified && tab.content === '' && !tab.path) {
-        replaceActiveTab(path, newContent);
+        replaceActiveTab(path, newContent, mtime);
       } else {
-        openNewTab(path, newContent);
+        openNewTab(path, newContent, mtime ?? null);
       }
     },
-    [activeTab, replaceActiveTab, openNewTab],
+    [activeTab, replaceActiveTab, openNewTab, updateActiveMtime],
   );
 
   const handleFileSaved = useCallback(
-    (path: string) => {
+    async (path: string) => {
       updateActivePath(path);
       markActiveClean();
+      // 保存后更新 mtime
+      try {
+        const info = await stat(path);
+        if (info.mtime) updateActiveMtime(info.mtime.getTime());
+      } catch { /* ignore */ }
     },
-    [updateActivePath, markActiveClean],
+    [updateActivePath, markActiveClean, updateActiveMtime],
   );
 
   const { openFile, saveFile, saveFileAs, error: fileError, clearError: clearFileError } = useFileOperations({
@@ -139,6 +154,69 @@ export default function App() {
       }
     });
     return () => { p.then(fn => fn()); };
+  }, []);
+
+  // ── OS 级文件监控：检测外部修改 ──
+  const handleExternalChange = useCallback(async (path: string, tabId: string) => {
+    const tab = tabs.find(t => t.id === tabId);
+    if (!tab) return;
+
+    const ok = await confirm(
+      `"${tab.title}" 已被外部程序修改，是否重新加载？`,
+      { title: '文件已更改', kind: 'warning' },
+    );
+    if (!ok) {
+      // 拒绝后更新 mtime，下次仍能检测
+      try {
+        const info = await stat(path);
+        if (info.mtime) updateTabMtime(tabId, info.mtime.getTime());
+      } catch { /* ignore */ }
+      return;
+    }
+
+    // 重新加载
+    try {
+      const content = await readTextFile(path);
+      updateTabContent(tabId, content);
+      const info = await stat(path);
+      if (info.mtime) updateTabMtime(tabId, info.mtime.getTime());
+    } catch {
+      // 读取失败
+    }
+  }, [tabs, updateTabContent, updateTabMtime]);
+
+  // 构建 watcher 所需的 tab 列表（仅包括有路径的）
+  const watchedTabs = tabs
+    .filter(t => t.path !== null)
+    .map(t => ({ path: t.path!, tabId: t.id, lastModified: t.lastModified }));
+
+  useFileWatcher({
+    tabs: watchedTabs,
+    onExternalChange: handleExternalChange,
+  });
+
+  // ── 窗口聚焦时补录 session 恢复的 mtime ──
+  const focusHandlersRef = useRef({ updateTabMtime });
+  focusHandlersRef.current = { updateTabMtime };
+
+  const tabsWithNullMtimeRef = useRef(tabs);
+  tabsWithNullMtimeRef.current = tabs;
+
+  useEffect(() => {
+    const handleFocus = async () => {
+      const { updateTabMtime } = focusHandlersRef.current;
+      for (const tab of tabsWithNullMtimeRef.current) {
+        if (!tab.path || tab.lastModified !== null) continue;
+        try {
+          const info = await stat(tab.path);
+          if (info.mtime) updateTabMtime(tab.id, info.mtime.getTime());
+        } catch { /* ignore */ }
+      }
+    };
+    // 首次挂载时立即补录（窗口已聚焦，不会触发 focus 事件）
+    handleFocus();
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
   }, []);
 
   // Global keyboard shortcuts
@@ -299,6 +377,7 @@ export default function App() {
               value={activeTab.content}
               onChange={updateActiveContent}
               isDark={isDark}
+              currentPath={activeTab.path}
             />
           </Panel>
 

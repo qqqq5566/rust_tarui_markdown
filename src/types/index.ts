@@ -14,6 +14,8 @@ export interface TabState {
   content: string;
   isModified: boolean;
   title: string;
+  /** 文件最后修改时间（毫秒时间戳），用于检测外部修改 */
+  lastModified: number | null;
 }
 
 export interface DocumentStats {

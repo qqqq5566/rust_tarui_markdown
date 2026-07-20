@@ -10,6 +10,10 @@ import type { ContextMenuItem } from './ContextMenu';
 import {
   IconLink, IconImage, IconTable, IconVideo,
 } from '../Icons';
+import {
+  readImageFromClipboard, saveImageToAssets,
+  imageToBase64Markdown, mimeToExt,
+} from '../../utils/imagePaste';
 import styles from './MarkdownEditor.module.css';
 
 export interface MarkdownEditorAPI {
@@ -32,6 +36,8 @@ interface MarkdownEditorProps {
   value: string;
   onChange: (value: string) => void;
   isDark: boolean;
+  /** 当前文件路径，用于图片粘贴保存到 assets/ 目录 */
+  currentPath: string | null;
 }
 
 function insertFormatting(
@@ -92,8 +98,11 @@ function insertFormatting(
 }
 
 const MarkdownEditor = forwardRef<MarkdownEditorAPI, MarkdownEditorProps>(
-  function MarkdownEditor({ value, onChange, isDark }, ref) {
+  function MarkdownEditor({ value, onChange, isDark, currentPath }, ref) {
     const editorRef = useRef<EditorView | null>(null);
+    // 保持最新 path 引用，避免 extensions 闭包陈旧
+    const pathRef = useRef(currentPath);
+    pathRef.current = currentPath;
 
     const getView = useCallback((): EditorView | null => {
       return editorRef.current;
@@ -424,6 +433,21 @@ const MarkdownEditor = forwardRef<MarkdownEditorAPI, MarkdownEditorProps>(
               shortcut: 'Ctrl+V',
               action: async () => {
                 try {
+                  // 优先尝试图片粘贴
+                  const img = await readImageFromClipboard();
+                  if (img) {
+                    const fp = pathRef.current;
+                    if (fp) {
+                      const ext = mimeToExt(img.mime);
+                      const md = await saveImageToAssets(img.data, fp, ext);
+                      view.dispatch(view.state.replaceSelection(md));
+                    } else {
+                      const md = imageToBase64Markdown(img.data, img.mime);
+                      view.dispatch(view.state.replaceSelection(md));
+                    }
+                    return;
+                  }
+                  // fallback: 文本粘贴
                   const text = await navigator.clipboard.readText();
                   if (text) {
                     view.dispatch(view.state.replaceSelection(text));
@@ -509,7 +533,44 @@ const MarkdownEditor = forwardRef<MarkdownEditorAPI, MarkdownEditorProps>(
     // Note: searchKeymap is still enabled in basicSetup (Ctrl+F/F3/Escape in editor),
     // but our global keydown handler in App.tsx intercepts Ctrl+F/Ctrl+H to open
     // the custom SearchDialog instead.
+    /** 处理图片粘贴 */
+    const pasteHandler = EditorView.domEventHandlers({
+      paste: (event, view) => {
+        const clipboard = event.clipboardData;
+        if (!clipboard) return false;
+
+        // 检查是否有图片
+        const hasImage = Array.from(clipboard.items).some(
+          item => item.type.startsWith('image/'),
+        );
+        if (!hasImage) return false; // 无图片，让 CodeMirror 处理文本
+
+        // 有图片：阻止默认行为，异步处理
+        event.preventDefault();
+
+        (async () => {
+          const result = await readImageFromClipboard();
+          if (!result) return;
+
+          const filePath = pathRef.current;
+          if (filePath) {
+            // 有路径 → 保存到 assets/
+            const ext = mimeToExt(result.mime);
+            const md = await saveImageToAssets(result.data, filePath, ext);
+            view.dispatch(view.state.replaceSelection(md));
+          } else {
+            // 无路径 → base64 内嵌
+            const md = imageToBase64Markdown(result.data, result.mime);
+            view.dispatch(view.state.replaceSelection(md));
+          }
+        })();
+
+        return true;
+      },
+    });
+
     const extensions: Extension[] = [
+      pasteHandler,
       markdown({ base: markdownLanguage, codeLanguages: languages }),
       keymap.of([
         {

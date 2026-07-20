@@ -70,9 +70,9 @@ function generateId(): string {
   return `tab-${nextId++}-${Date.now()}`;
 }
 
-function createTab(path: string | null, content: string): TabState {
+function createTab(path: string | null, content: string, lastModified: number | null = null): TabState {
   const title = path ? path.split(/[/\\]/).pop() || '未命名' : '未命名';
-  return { id: generateId(), path, content, isModified: false, title };
+  return { id: generateId(), path, content, isModified: false, title, lastModified };
 }
 
 function computeStats(content: string): DocumentStats {
@@ -92,10 +92,12 @@ export function useTabs() {
   if (!initialRef.current) {
     const session = loadSession();
     if (session) {
+      // 从 session 恢复时不保留 lastModified，focus 时重新 stat
       const restored = session.tabs.map(tab => ({
         ...createTab(tab.path, tab.content),
         isModified: tab.isModified,
         title: tab.title,
+        lastModified: null,
       }));
       const idx = session.activeIndex;
       const aid = (idx >= 0 && idx < restored.length) ? restored[idx].id : restored[0].id;
@@ -148,8 +150,8 @@ export function useTabs() {
     ));
   }, [activeId]);
 
-  const openNewTab = useCallback((path: string | null, content: string) => {
-    const tab = createTab(path, content);
+  const openNewTab = useCallback((path: string | null, content: string, lastModified: number | null = null) => {
+    const tab = createTab(path, content, lastModified);
     setTabs(prev => [...prev, tab]);
     setActiveId(tab.id);
     return tab;
@@ -172,14 +174,35 @@ export function useTabs() {
     setActiveId(tabId);
   }, []);
 
-  const replaceActiveTab = useCallback((path: string, content: string) => {
+  const replaceActiveTab = useCallback((path: string, content: string, lastModified?: number) => {
     const title = path.split(/[/\\]/).pop() || '未命名';
     setTabs(prev => prev.map(t =>
       t.id === activeId
-        ? { ...t, path, content, title, isModified: false }
+        ? { ...t, path, content, title, isModified: false, lastModified: lastModified ?? null }
         : t,
     ));
   }, [activeId]);
+
+  /** 更新当前活动标签页的文件修改时间 */
+  const updateActiveMtime = useCallback((mtime: number) => {
+    setTabs(prev => prev.map(t =>
+      t.id === activeId ? { ...t, lastModified: mtime } : t,
+    ));
+  }, [activeId]);
+
+  /** 更新指定标签页的内容 */
+  const updateTabContent = useCallback((tabId: string, content: string) => {
+    setTabs(prev => prev.map(t =>
+      t.id === tabId ? { ...t, content, isModified: false } : t,
+    ));
+  }, []);
+
+  /** 更新指定标签页的 mtime */
+  const updateTabMtime = useCallback((tabId: string, mtime: number) => {
+    setTabs(prev => prev.map(t =>
+      t.id === tabId ? { ...t, lastModified: mtime } : t,
+    ));
+  }, []);
 
   /** 显式保存 session，供应用关闭时调用 */
   const persistSession = useCallback(() => {
@@ -199,5 +222,8 @@ export function useTabs() {
     switchTab,
     replaceActiveTab,
     persistSession,
+    updateActiveMtime,
+    updateTabContent,
+    updateTabMtime,
   };
 }
