@@ -437,14 +437,20 @@ const MarkdownEditor = forwardRef<MarkdownEditorAPI, MarkdownEditorProps>(
                   const img = await readImageFromClipboard();
                   if (img) {
                     const fp = pathRef.current;
+                    let md: string;
                     if (fp) {
                       const ext = mimeToExt(img.mime);
-                      const md = await saveImageToAssets(img.data, fp, ext);
-                      view.dispatch(view.state.replaceSelection(md));
+                      md = await saveImageToAssets(img.data, fp, ext);
                     } else {
-                      const md = imageToBase64Markdown(img.data, img.mime);
-                      view.dispatch(view.state.replaceSelection(md));
+                      md = imageToBase64Markdown(img.data, img.mime);
                     }
+                    // 末尾加换行，光标跳到新行
+                    const insert = md + '\n';
+                    const from = view.state.selection.main.from;
+                    view.dispatch({
+                      changes: { from, to: view.state.selection.main.to, insert },
+                      selection: { anchor: from + insert.length },
+                    });
                     return;
                   }
                   // fallback: 文本粘贴
@@ -553,16 +559,20 @@ const MarkdownEditor = forwardRef<MarkdownEditorAPI, MarkdownEditorProps>(
           if (!result) return;
 
           const filePath = pathRef.current;
+          let md: string;
           if (filePath) {
-            // 有路径 → 保存到 assets/
             const ext = mimeToExt(result.mime);
-            const md = await saveImageToAssets(result.data, filePath, ext);
-            view.dispatch(view.state.replaceSelection(md));
+            md = await saveImageToAssets(result.data, filePath, ext);
           } else {
-            // 无路径 → base64 内嵌
-            const md = imageToBase64Markdown(result.data, result.mime);
-            view.dispatch(view.state.replaceSelection(md));
+            md = imageToBase64Markdown(result.data, result.mime);
           }
+          // 末尾加换行，光标跳到新行，避免卡在长 base64 行中
+          const insert = md + '\n';
+          const from = view.state.selection.main.from;
+          view.dispatch({
+            changes: { from: view.state.selection.main.from, to: view.state.selection.main.to, insert },
+            selection: { anchor: from + insert.length },
+          });
         })();
 
         return true;
