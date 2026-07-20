@@ -1,4 +1,5 @@
 import type { EditorMode } from '../../types';
+import type { EditorSettings } from '../../hooks/useSettings';
 import {
   IconNew, IconOpen, IconSave, IconSaveAs,
   IconBold, IconItalic, IconStrikethrough, IconHeading,
@@ -6,7 +7,9 @@ import {
   IconListUnordered, IconListOrdered, IconQuote,
   IconLink, IconImage,
   IconSun, IconMoon, IconEye, IconSearch, IconReplace,
+  IconSettings,
 } from '../Icons';
+import SettingsDropdown from '../Settings/SettingsDropdown';
 import styles from './Toolbar.module.css';
 
 interface ToolbarProps {
@@ -32,6 +35,11 @@ interface ToolbarProps {
   currentMode: EditorMode;
   isDark: boolean;
   currentFilePath: string | null;
+  // 设置
+  settings: EditorSettings;
+  onUpdateSettings: (partial: Partial<EditorSettings>) => void;
+  settingsOpen: boolean;
+  onToggleSettings: () => void;
 }
 
 export default function Toolbar({
@@ -43,6 +51,7 @@ export default function Toolbar({
   onSearch, onReplace,
   onToggleTheme, onToggleMode,
   currentMode, isDark,
+  settings, onUpdateSettings, settingsOpen, onToggleSettings,
 }: ToolbarProps) {
   const modeLabels: Record<EditorMode, string> = {
     edit: '编辑',
@@ -51,7 +60,7 @@ export default function Toolbar({
   };
 
   return (
-    <div className={styles.toolbar}>
+    <div className={styles.toolbar} onContextMenu={e => e.preventDefault()}>
       {/* 文件操作 */}
       <div className={styles.group}>
         <button className={styles.button} onClick={onNew} title="新建 (Ctrl+N)">
@@ -153,6 +162,25 @@ export default function Toolbar({
           <IconEye size={16} />
           <span className={styles.label}>{modeLabels[currentMode]}</span>
         </button>
+        {/* 设置按钮 */}
+        <div className={styles.settingsWrapper}>
+          <button
+            className={`${styles.button} ${settingsOpen ? styles.settingsBtnActive : ''}`}
+            onClick={onToggleSettings}
+            title="设置"
+            data-settings-btn
+          >
+            <IconSettings size={16} />
+          </button>
+          {settingsOpen && (
+            <SettingsDropdown
+              settings={settings}
+              onUpdate={onUpdateSettings}
+              isDark={isDark}
+              onClose={onToggleSettings}
+            />
+          )}
+        </div>
       </div>
     </div>
   );

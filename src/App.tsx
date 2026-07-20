@@ -7,6 +7,8 @@ import { useTabs } from './hooks/useTabs';
 import { useFileOperations } from './hooks/useFileOperations';
 import { useTheme } from './hooks/useTheme';
 import { useScrollSync } from './hooks/useScrollSync';
+import { useSettings } from './hooks/useSettings';
+import { useAutoSave } from './hooks/useAutoSave';
 import MarkdownEditor from './components/Editor/MarkdownEditor';
 import type { MarkdownEditorAPI } from './components/Editor/MarkdownEditor';
 import SearchDialog from './components/Search/SearchDialog';
@@ -25,6 +27,7 @@ export default function App() {
     tabs, activeTab, activeId, stats,
     updateActiveContent, updateActivePath, markActiveClean,
     openNewTab, closeTab, switchTab, replaceActiveTab,
+    persistSession,
   } = useTabs();
   const { toggleTheme, isDark } = useTheme();
   const editorRef = useRef<MarkdownEditorAPI>(null);
@@ -40,6 +43,11 @@ export default function App() {
     setMode(prev => (prev === 'preview' ? 'split' : prev));
     setSearchDialog({ open: true, mode: dialogMode });
   }, []);
+
+  // ── 设置 & 自动保存 ──
+  const { settings, updateSettings } = useSettings();
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const toggleSettings = useCallback(() => setSettingsOpen(prev => !prev), []);
 
   // ── 编辑区 ↔ 预览区 滚动同步 ──
   const previewScrollRef = useRef<HTMLDivElement>(null);
@@ -71,10 +79,26 @@ export default function App() {
     [updateActivePath, markActiveClean],
   );
 
-  const { openFile, saveFile, saveFileAs } = useFileOperations({
+  const { openFile, saveFile, saveFileAs, error: fileError, clearError: clearFileError } = useFileOperations({
     onFileOpened: handleFileOpened,
     onFileSaved: handleFileSaved,
   });
+
+  // 文件操作错误自动消失
+  useEffect(() => {
+    if (!fileError) return;
+    const timer = setTimeout(clearFileError, 5000);
+    return () => clearTimeout(timer);
+  }, [fileError, clearFileError]);
+
+  // ── 自动保存 ──
+  useAutoSave(
+    activeTab.content,
+    activeTab.path,
+    activeTab.isModified,
+    settings,
+    saveFile,
+  );
 
   // Update window title
   useEffect(() => {
@@ -92,6 +116,10 @@ export default function App() {
   const tabsRef = useRef(tabs);
   tabsRef.current = tabs;
 
+  // 避免闭包陷阱：persistSession 随 tabs/activeId 变化，用 ref 保持最新引用
+  const persistRef = useRef(persistSession);
+  persistRef.current = persistSession;
+
   useEffect(() => {
     const p = listen('close-requested', async () => {
       const hasUnsaved = tabsRef.current.some(t => t.isModified);
@@ -100,8 +128,13 @@ export default function App() {
           '有未保存的更改，确定不保存就关闭吗？',
           { title: '未保存的更改', kind: 'warning' },
         );
-        if (ok) await emit('confirm-close');
+        if (ok) {
+          // 关闭前保存会话，下次启动恢复
+          persistRef.current();
+          await emit('confirm-close');
+        }
       } else {
+        persistRef.current();
         await emit('confirm-close');
       }
     });
@@ -240,6 +273,10 @@ export default function App() {
         currentMode={mode}
         isDark={isDark}
         currentFilePath={activeTab.path}
+        settings={settings}
+        onUpdateSettings={updateSettings}
+        settingsOpen={settingsOpen}
+        onToggleSettings={toggleSettings}
       />
 
       <TabBar
@@ -291,6 +328,14 @@ export default function App() {
           initialMode={searchDialog.mode}
           onClose={() => setSearchDialog(prev => ({ ...prev, open: false }))}
         />
+      )}
+
+      {/* ── 文件操作错误提示 ── */}
+      {fileError && (
+        <div className={styles.errorToast} role="alert">
+          <span>{fileError}</span>
+          <button className={styles.errorClose} onClick={clearFileError}>✕</button>
+        </div>
       )}
     </div>
   );

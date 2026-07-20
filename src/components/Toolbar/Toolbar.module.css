@@ -64,3 +64,13 @@
 .modeButton {
   min-width: 80px;
 }
+
+.settingsWrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.settingsBtnActive {
+  background: var(--toolbar-button-active);
+}

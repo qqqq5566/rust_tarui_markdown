@@ -4,6 +4,7 @@ import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
 import { languages } from '@codemirror/language-data';
 import { EditorView, keymap } from '@codemirror/view';
 import type { Extension } from '@codemirror/state';
+import { undo, redo } from '@codemirror/commands';
 import ContextMenu from './ContextMenu';
 import type { ContextMenuItem } from './ContextMenu';
 import {
@@ -487,14 +488,16 @@ const MarkdownEditor = forwardRef<MarkdownEditorAPI, MarkdownEditorProps>(
               label: '撤销',
               shortcut: 'Ctrl+Z',
               action: () => {
-                document.execCommand('undo');
+                const v = getView();
+                if (v) undo(v);
               },
             },
             {
               label: '重做',
               shortcut: 'Ctrl+Y',
               action: () => {
-                document.execCommand('redo');
+                const v = getView();
+                if (v) redo(v);
               },
             },
           ],

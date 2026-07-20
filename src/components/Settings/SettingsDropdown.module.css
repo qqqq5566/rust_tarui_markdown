@@ -1,0 +1,122 @@
+/* ===================================================
+   SettingsDropdown — 设置下拉面板123123
+   =================================================== */
+
+.dropdown {
+  position: absolute;
+  top: 100%;
+  right: 4px;
+  margin-top: 4px;
+  width: 240px;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.15), 0 2px 6px rgba(0,0,0,0.1);
+  font-size: 13px;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  z-index: 2000;
+  overflow: hidden;
+  border: 1px solid;
+  user-select: none;
+}
+
+/* ── 亮色 ── */
+.light {
+  background: #fff;
+  color: #333;
+  border-color: #d4d4d8;
+}
+.light .label { color: #333; }
+.light .hint { color: #999; }
+.light .select { background: #f5f5f5; border-color: #d4d4d8; color: #333; }
+
+/* ── 暗色 ── */
+.dark {
+  background: #2d2d2d;
+  color: #d4d4d4;
+  border-color: #444;
+}
+.dark .label { color: #d4d4d4; }
+.dark .hint { color: #888; }
+.dark .select { background: #1e1e1e; border-color: #555; color: #d4d4d4; }
+
+/* ── 行 ── */
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  gap: 12px;
+}
+
+.row + .row {
+  border-top: 1px solid;
+  border-color: inherit;
+}
+
+.rowLeft {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.label {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.hint {
+  font-size: 11px;
+}
+
+/* ── 开关 ── */
+.toggle {
+  width: 40px;
+  height: 22px;
+  border-radius: 11px;
+  border: none;
+  cursor: pointer;
+  position: relative;
+  transition: background-color 0.2s;
+  flex-shrink: 0;
+}
+
+.toggleOn {
+  background: #2563eb;
+}
+
+.toggleOff {
+  background: #aaa;
+}
+
+.dark .toggleOff {
+  background: #555;
+}
+
+.toggleKnob {
+  position: absolute;
+  top: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  transition: left 0.2s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+}
+
+.toggleOn .toggleKnob {
+  left: 20px;
+}
+
+.toggleOff .toggleKnob {
+  left: 2px;
+}
+
+/* ── 下拉选择 ── */
+.select {
+  padding: 4px 6px;
+  border-radius: 4px;
+  border: 1px solid;
+  font-size: 13px;
+  font-family: inherit;
+  outline: none;
+  cursor: pointer;
+}

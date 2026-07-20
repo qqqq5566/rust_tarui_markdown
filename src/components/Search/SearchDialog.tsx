@@ -46,6 +46,11 @@ function navigateToMatch(view: EditorView, matches: MatchResult[], currentIndex:
 
 // ── 搜索工具函数 ──────────────────────────
 
+/** 判断字符是否为单词字符（字母、数字、下划线） */
+function isWordChar(ch: string): boolean {
+  return /\w/.test(ch);
+}
+
 function findAllMatches(
   view: EditorView,
   query: string,
@@ -60,8 +65,10 @@ function findAllMatches(
 
   try {
     if (opts.regexp) {
-      try { new RegExp(query); } catch { return []; }
-      const cursor = new RegExpCursor(doc, query, { ignoreCase: !opts.caseSensitive }, 0, doc.length);
+      // 全词匹配：在正则两侧加 \b，但需保留原始正则的锚点和标志
+      const pattern = opts.wholeWord ? `\\b(?:${query})\\b` : query;
+      try { new RegExp(pattern); } catch { return []; }
+      const cursor = new RegExpCursor(doc, pattern, { ignoreCase: !opts.caseSensitive }, 0, doc.length);
       while (!cursor.next().done && results.length < maxMatches) {
         const { from, to } = cursor.value;
         const line = state.doc.lineAt(from);
@@ -76,6 +83,16 @@ function findAllMatches(
       const cursor = new SearchCursor(doc, query, 0, doc.length, normalize);
       while (!cursor.next().done && results.length < maxMatches) {
         const { from, to } = cursor.value;
+
+        // 全词匹配：检查匹配边界是否为单词边界
+        if (opts.wholeWord) {
+          const charBefore = from > 0 ? doc.sliceString(from - 1, from) : '';
+          const charAfter = to < doc.length ? doc.sliceString(to, to + 1) : '';
+          if ((charBefore && isWordChar(charBefore)) || (charAfter && isWordChar(charAfter))) {
+            continue; // 不是单词边界，跳过
+          }
+        }
+
         const line = state.doc.lineAt(from);
         results.push({
           from, to,

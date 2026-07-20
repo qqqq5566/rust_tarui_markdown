@@ -10,7 +10,7 @@ interface TabBarProps {
 
 export default function TabBar({ tabs, activeId, onSwitch, onClose }: TabBarProps) {
   return (
-    <div className={styles.tabBar}>
+    <div className={styles.tabBar} onContextMenu={e => e.preventDefault()}>
       {tabs.map(tab => (
         <div
           key={tab.id}
