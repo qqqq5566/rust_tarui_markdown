@@ -1,7 +1,8 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { listen, emit } from '@tauri-apps/api/event';
-import { confirm } from '@tauri-apps/plugin-dialog';
-import { stat, readTextFile } from '@tauri-apps/plugin-fs';
+import { confirm, open as openDialog } from '@tauri-apps/plugin-dialog';
+import { stat, readTextFile, readDir } from '@tauri-apps/plugin-fs';
+import { join } from '@tauri-apps/api/path';
 import { useFileWatcher } from './hooks/useFileWatcher';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 
@@ -15,11 +16,12 @@ import MarkdownEditor from './components/Editor/MarkdownEditor';
 import type { MarkdownEditorAPI } from './components/Editor/MarkdownEditor';
 import SearchDialog from './components/Search/SearchDialog';
 import MarkdownPreview from './components/Preview/MarkdownPreview';
+import FileExplorerPanel from './components/FileExplorer/FileExplorerPanel';
 import Toolbar from './components/Toolbar/Toolbar';
 import TabBar from './components/TabBar/TabBar';
 import StatusBar from './components/StatusBar/StatusBar';
 
-import type { EditorMode } from './types';
+import type { EditorMode, FileTreeNode } from './types';
 import styles from './App.module.css';
 
 export default function App() {
@@ -59,6 +61,153 @@ export default function App() {
     previewScrollRef,
     mode === 'split',
   );
+
+  // ── 文件夹功能 ──
+  const FOLDER_SESSION_KEY = 'editor-folder-path';
+  const [folderPath, setFolderPath] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(FOLDER_SESSION_KEY) || null;
+    } catch { return null; }
+  });
+  const [fileTree, setFileTree] = useState<FileTreeNode[]>([]);
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
+  const [loadingPaths, setLoadingPaths] = useState<Set<string>>(new Set());
+  const [sidebarVisible, setSidebarVisible] = useState(folderPath !== null);
+
+  /** 忽略的目录名 */
+  const IGNORE_PATTERNS = ['.git', 'node_modules', '.DS_Store', 'target'];
+
+  /** 读取目录内容 → FileTreeNode[] */
+  const loadDirEntries = useCallback(async (dirPath: string): Promise<FileTreeNode[]> => {
+    try {
+      const entries = await readDir(dirPath);
+      const nodes: FileTreeNode[] = [];
+      for (const entry of entries) {
+        if (IGNORE_PATTERNS.includes(entry.name)) continue;
+        const fullPath = await join(dirPath, entry.name);
+        nodes.push({
+          name: entry.name,
+          path: fullPath,
+          isDirectory: entry.isDirectory,
+          isSymlink: entry.isSymlink,
+        });
+      }
+      nodes.sort((a, b) => {
+        if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
+        return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
+      });
+      return nodes;
+    } catch {
+      return [];
+    }
+  }, []);
+
+  /** 打开文件夹 */
+  const handleOpenFolder = useCallback(async () => {
+    const selected = await openDialog({
+      directory: true,
+      multiple: false,
+      title: '选择文件夹',
+    });
+    if (!selected) return;
+    const path = selected as string;
+    setFolderPath(path);
+    localStorage.setItem(FOLDER_SESSION_KEY, path);
+    setExpandedPaths(new Set());
+    setLoadingPaths(new Set());
+    setSidebarVisible(true);
+    const entries = await loadDirEntries(path);
+    setFileTree(entries);
+  }, [loadDirEntries]);
+
+  /** 展开/折叠目录 */
+  const handleToggleFolder = useCallback(async (path: string) => {
+    if (loadingPaths.has(path)) return;
+
+    if (expandedPaths.has(path)) {
+      // 折叠
+      setExpandedPaths(prev => {
+        const next = new Set(prev);
+        next.delete(path);
+        return next;
+      });
+      return;
+    }
+
+    // 展开：加载子目录
+    setLoadingPaths(prev => new Set(prev).add(path));
+    const children = await loadDirEntries(path);
+    setFileTree(prev => {
+      // 原地更新树中目标节点的 children
+      const update = (nodes: FileTreeNode[]): FileTreeNode[] =>
+        nodes.map(n => n.path === path ? { ...n, children } : n.children ? { ...n, children: update(n.children) } : n);
+      return update(prev);
+    });
+    setExpandedPaths(prev => new Set(prev).add(path));
+    setLoadingPaths(prev => {
+      const next = new Set(prev);
+      next.delete(path);
+      return next;
+    });
+  }, [expandedPaths, loadingPaths, loadDirEntries]);
+
+  /** 从文件树打开文件 */
+  const handleOpenFileFromTree = useCallback(async (filePath: string) => {
+    try {
+      const content = await readTextFile(filePath);
+      let mtime: number | undefined;
+      try {
+        const info = await stat(filePath);
+        if (info.mtime) mtime = info.mtime.getTime();
+      } catch { /* ignore */ }
+
+      const tab = activeTab;
+      if (!tab.isModified && tab.content === '' && !tab.path) {
+        replaceActiveTab(filePath, content, mtime);
+      } else {
+        openNewTab(filePath, content, mtime ?? null);
+      }
+    } catch {
+      // 读取失败，静默忽略
+    }
+  }, [activeTab, replaceActiveTab, openNewTab]);
+
+  /** 关闭文件夹 */
+  const handleCloseFolder = useCallback(() => {
+    setFolderPath(null);
+    setFileTree([]);
+    setExpandedPaths(new Set());
+    setSidebarVisible(false);
+    localStorage.removeItem(FOLDER_SESSION_KEY);
+  }, []);
+
+  /** 刷新文件树 */
+  const handleRefreshTree = useCallback(async () => {
+    if (!folderPath) return;
+    const expanded = new Set(expandedPaths);
+    // 重新加载根
+    const rootEntries = await loadDirEntries(folderPath);
+    // 重新加载所有已展开的目录
+    const reloadExpanded = async (nodes: FileTreeNode[]): Promise<FileTreeNode[]> => {
+      return Promise.all(nodes.map(async (node) => {
+        if (expanded.has(node.path)) {
+          const children = await loadDirEntries(node.path);
+          return { ...node, children: await reloadExpanded(children) };
+        }
+        return node;
+      }));
+    };
+    const updated = await reloadExpanded(rootEntries);
+    setFileTree(updated);
+  }, [folderPath, expandedPaths, loadDirEntries]);
+
+  // 启动时加载根目录（session 恢复）
+  const folderInitRef = useRef(false);
+  useEffect(() => {
+    if (folderInitRef.current || !folderPath) return;
+    folderInitRef.current = true;
+    loadDirEntries(folderPath).then(setFileTree);
+  }, [folderPath, loadDirEntries]);
 
   // File operation callbacks
   const handleFileOpened = useCallback(
@@ -323,14 +472,64 @@ export default function App() {
     });
   }, []);
 
+  // ── 侧边栏拖拽调整宽度 ──
+  const [sidebarWidth, setSidebarWidth] = useState(240);
+  const sidebarResizing = useRef(false);
+
+  const handleSidebarResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    sidebarResizing.current = true;
+    const startX = e.clientX;
+    const startWidth = sidebarWidth;
+
+    const onMouseMove = (ev: MouseEvent) => {
+      const delta = ev.clientX - startX;
+      const newWidth = Math.max(180, Math.min(500, startWidth + delta));
+      setSidebarWidth(newWidth);
+    };
+
+    const onMouseUp = () => {
+      sidebarResizing.current = false;
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  }, [sidebarWidth]);
+
   const showEditor = mode === 'edit' || mode === 'split';
   const showPreview = mode === 'preview' || mode === 'split';
+
+  // ── Layout: 构建侧边栏和编辑器区域 ──
+  const sidebar = sidebarVisible && folderPath ? (
+    <>
+      <div style={{ width: sidebarWidth, flexShrink: 0, height: '100%' }}>
+        <FileExplorerPanel
+          folderPath={folderPath}
+          fileTree={fileTree}
+          expandedPaths={expandedPaths}
+          loadingPaths={loadingPaths}
+          onToggleFolder={handleToggleFolder}
+          onOpenFile={handleOpenFileFromTree}
+          onCloseFolder={handleCloseFolder}
+          onRefresh={handleRefreshTree}
+        />
+      </div>
+      <div
+        className={styles.resizeHandle}
+        onMouseDown={handleSidebarResizeStart}
+        style={{ cursor: 'col-resize' }}
+      />
+    </>
+  ) : null;
 
   return (
     <div className={`${styles.app} ${isDark ? styles.dark : styles.light}`}>
       <Toolbar
         onNew={handleNew}
         onOpen={handleOpen}
+        onOpenFolder={handleOpenFolder}
         onSave={handleSave}
         onSaveAs={handleSaveAs}
         onBold={() => editorRef.current?.toggleBold()}
@@ -364,40 +563,45 @@ export default function App() {
         onClose={handleCloseTab}
       />
 
-      <div className={styles.mainArea}>
-        <PanelGroup direction="horizontal" autoSaveId="editor-split-layout">
-          <Panel
-            defaultSize={50}
-            minSize={20}
-            className={!showEditor ? styles.hiddenPanel : undefined}
-          >
-            <MarkdownEditor
-              key={activeId}
-              ref={editorRef}
-              value={activeTab.content}
-              onChange={updateActiveContent}
-              isDark={isDark}
-              currentPath={activeTab.path}
-            />
-          </Panel>
+      <div className={styles.contentArea}>
+        {sidebar}
+        <div className={styles.editorArea}>
+          <div className={styles.mainArea}>
+            <PanelGroup direction="horizontal" autoSaveId="editor-split-layout">
+              <Panel
+                defaultSize={50}
+                minSize={20}
+                className={!showEditor ? styles.hiddenPanel : undefined}
+              >
+                <MarkdownEditor
+                  key={activeId}
+                  ref={editorRef}
+                  value={activeTab.content}
+                  onChange={updateActiveContent}
+                  isDark={isDark}
+                  currentPath={activeTab.path}
+                />
+              </Panel>
 
-          {mode === 'split' && <PanelResizeHandle className={styles.resizeHandle} />}
+              {mode === 'split' && <PanelResizeHandle className={styles.resizeHandle} />}
 
-          <Panel
-            defaultSize={50}
-            minSize={20}
-            className={!showPreview ? styles.hiddenPanel : undefined}
-          >
-            <MarkdownPreview ref={previewScrollRef} content={activeTab.content} />
-          </Panel>
-        </PanelGroup>
+              <Panel
+                defaultSize={50}
+                minSize={20}
+                className={!showPreview ? styles.hiddenPanel : undefined}
+              >
+                <MarkdownPreview ref={previewScrollRef} content={activeTab.content} />
+              </Panel>
+            </PanelGroup>
+          </div>
+
+          <StatusBar
+            filePath={activeTab.path}
+            stats={stats}
+            isModified={activeTab.isModified}
+          />
+        </div>
       </div>
-
-      <StatusBar
-        filePath={activeTab.path}
-        stats={stats}
-        isModified={activeTab.isModified}
-      />
 
       {/* ── Notepad++ 风格浮动搜索对话框 ── */}
       {searchDialog.open && editorRef.current?.getView() && (

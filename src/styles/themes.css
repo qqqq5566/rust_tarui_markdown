@@ -21,6 +21,11 @@
   --table-border: #d4d4d8;
   --table-header-bg: #f4f4f5;
   --table-stripe-bg: #fafafa;
+  /* 侧边栏 */
+  --sidebar-bg: #f3f4f6;
+  --sidebar-hover: #e5e7eb;
+  --sidebar-active: #d1d5db;
+}
 }
 
 [data-theme="dark"] {
@@ -45,6 +50,10 @@
   --table-border: #4a4a4a;
   --table-header-bg: #333333;
   --table-stripe-bg: #292929;
+  /* 侧边栏 */
+  --sidebar-bg: #252526;
+  --sidebar-hover: #2d2d2d;
+  --sidebar-active: #3c3c3c;
 }
 
 /* Smooth theme transition */

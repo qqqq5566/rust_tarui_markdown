@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "Rust Markdown 编辑器",
+        "title": "Markdown 编辑器",
         "label": "main",
         "width": 1200,
         "height": 800,

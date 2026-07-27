@@ -46,6 +46,12 @@
         { "path": "**/*" }
       ]
     },
-    "clipboard-manager:allow-read-image"
+    "clipboard-manager:allow-read-image",
+    {
+      "identifier": "fs:allow-read-dir",
+      "allow": [
+        { "path": "**/*" }
+      ]
+    }
   ]
 }

@@ -7,7 +7,7 @@ import {
   IconListUnordered, IconListOrdered, IconQuote,
   IconLink, IconImage,
   IconSun, IconMoon, IconEye, IconSearch, IconReplace,
-  IconSettings,
+  IconSettings, IconFolderPlus,
 } from '../Icons';
 import SettingsDropdown from '../Settings/SettingsDropdown';
 import styles from './Toolbar.module.css';
@@ -28,6 +28,7 @@ interface ToolbarProps {
   onBlockquote: () => void;
   onLink: () => void;
   onImage: () => void;
+  onOpenFolder: () => void;
   onSearch: () => void;
   onReplace: () => void;
   onToggleTheme: () => void;
@@ -44,6 +45,7 @@ interface ToolbarProps {
 
 export default function Toolbar({
   onNew, onOpen, onSave, onSaveAs,
+  onOpenFolder,
   onBold, onItalic, onStrikethrough, onHeading,
   onCodeBlock, onInlineCode,
   onUnorderedList, onOrderedList, onBlockquote,
@@ -70,6 +72,10 @@ export default function Toolbar({
         <button className={styles.button} onClick={onOpen} title="打开 (Ctrl+O)">
           <IconOpen size={16} />
           <span className={styles.label}>打开</span>
+        </button>
+        <button className={styles.button} onClick={onOpenFolder} title="打开文件夹">
+          <IconFolderPlus size={16} />
+          <span className={styles.label}>文件夹</span>
         </button>
         <button className={styles.button} onClick={onSave} title="保存 (Ctrl+S)">
           <IconSave size={16} />

@@ -29,3 +29,11 @@ export type FileAction =
   | { type: 'SET_PATH'; payload: string }
   | { type: 'MARK_CLEAN' }
   | { type: 'RESET' };
+
+export interface FileTreeNode {
+  name: string;
+  path: string;
+  isDirectory: boolean;
+  isSymlink: boolean;
+  children?: FileTreeNode[];
+}
