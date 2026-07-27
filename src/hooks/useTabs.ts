@@ -204,6 +204,14 @@ export function useTabs() {
     ));
   }, []);
 
+  /** 更新指定标签页的路径和标题 */
+  const updateTabPath = useCallback((tabId: string, newPath: string) => {
+    const title = newPath.split(/[/\\]/).pop() || '未命名';
+    setTabs(prev => prev.map(t =>
+      t.id === tabId ? { ...t, path: newPath, title } : t,
+    ));
+  }, []);
+
   /** 显式保存 session，供应用关闭时调用 */
   const persistSession = useCallback(() => {
     saveSession(tabs, activeId);
@@ -225,5 +233,6 @@ export function useTabs() {
     updateActiveMtime,
     updateTabContent,
     updateTabMtime,
+    updateTabPath,
   };
 }

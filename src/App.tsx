@@ -1,8 +1,8 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { listen, emit } from '@tauri-apps/api/event';
 import { confirm, open as openDialog } from '@tauri-apps/plugin-dialog';
-import { stat, readTextFile, readDir } from '@tauri-apps/plugin-fs';
-import { join } from '@tauri-apps/api/path';
+import { stat, readTextFile, readDir, remove, rename, mkdir, writeTextFile } from '@tauri-apps/plugin-fs';
+import { join, dirname } from '@tauri-apps/api/path';
 import { useFileWatcher } from './hooks/useFileWatcher';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 
@@ -33,7 +33,7 @@ export default function App() {
     updateActiveContent, updateActivePath, markActiveClean,
     openNewTab, closeTab, switchTab, replaceActiveTab,
     persistSession,
-    updateTabContent, updateTabMtime, updateActiveMtime,
+    updateTabContent, updateTabMtime, updateActiveMtime, updateTabPath,
   } = useTabs();
   const { toggleTheme, isDark } = useTheme();
   const editorRef = useRef<MarkdownEditorAPI>(null);
@@ -208,6 +208,80 @@ export default function App() {
     const updated = await reloadExpanded(rootEntries);
     setFileTree(updated);
   }, [folderPath, expandedPaths, loadDirEntries]);
+
+  // ── 文件树操作：删除、重命名、新建 ──
+
+  const handleDeleteFile = useCallback(async (path: string, isDirectory: boolean) => {
+    const nodeName = path.split(/[/\\]/).pop() || path;
+    const ok = await confirm(
+      `确定删除${isDirectory ? '目录' : '文件'}"${nodeName}"吗？${isDirectory ? '目录内所有内容将被删除。' : ''}`,
+      { title: '删除确认', kind: 'warning' },
+    );
+    if (!ok) return;
+
+    try {
+      await remove(path, isDirectory ? { recursive: true } : undefined);
+      // 关闭所有指向该路径的标签页
+      const affected = tabs.filter(t => t.path === path || t.path?.startsWith(path + '/') || t.path?.startsWith(path + '\\'));
+      affected.forEach(t => closeTab(t.id));
+    } catch (e) {
+      console.error('删除失败:', e);
+    }
+
+    // 刷新文件树
+    if (folderPath) {
+      const entries = await loadDirEntries(folderPath);
+      const reloadExpanded = async (nodes: FileTreeNode[]): Promise<FileTreeNode[]> => {
+        return Promise.all(nodes.map(async (node) => {
+          if (expandedPaths.has(node.path)) {
+            const children = await loadDirEntries(node.path);
+            return { ...node, children: await reloadExpanded(children) };
+          }
+          return node;
+        }));
+      };
+      setFileTree(await reloadExpanded(entries));
+    }
+  }, [tabs, closeTab, expandedPaths, folderPath, loadDirEntries]);
+
+  const handleRenameFile = useCallback(async (oldPath: string, newName: string) => {
+    try {
+      const parentDir = await dirname(oldPath);
+      const newPath = await join(parentDir, newName);
+      await rename(oldPath, newPath);
+      // 更新所有打开标签页中的路径
+      for (const tab of tabs) {
+        if (tab.path === oldPath) {
+          updateTabPath(tab.id, newPath);
+        }
+      }
+    } catch (e) {
+      console.error('重命名失败:', e);
+    }
+
+    // 刷新文件树
+    handleRefreshTree();
+  }, [tabs, updateTabPath, handleRefreshTree]);
+
+  const handleNewFile = useCallback(async (parentDir: string, name: string) => {
+    try {
+      const filePath = await join(parentDir, name);
+      await writeTextFile(filePath, '');
+    } catch (e) {
+      console.error('新建文件失败:', e);
+    }
+    handleRefreshTree();
+  }, [handleRefreshTree]);
+
+  const handleNewFolder = useCallback(async (parentDir: string, name: string) => {
+    try {
+      const dirPath = await join(parentDir, name);
+      await mkdir(dirPath);
+    } catch (e) {
+      console.error('新建文件夹失败:', e);
+    }
+    handleRefreshTree();
+  }, [handleRefreshTree]);
 
   // 启动时加载根目录（session 恢复）
   const folderInitRef = useRef(false);
@@ -595,6 +669,10 @@ export default function App() {
           onOpenFile={handleOpenFileFromTree}
           onCloseFolder={handleCloseFolder}
           onRefresh={handleRefreshTree}
+          onDelete={handleDeleteFile}
+          onRename={handleRenameFile}
+          onNewFile={handleNewFile}
+          onNewFolder={handleNewFolder}
         />
       </div>
       <div

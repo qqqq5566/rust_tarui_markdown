@@ -12,6 +12,7 @@ interface FileTreeNodeProps {
   selectedPath: string | null;
   onToggle: (path: string) => void;
   onOpenFile: (path: string) => void;
+  onContextMenu: (e: React.MouseEvent, node: FileTreeNodeType) => void;
 }
 
 export default function FileTreeNode({
@@ -22,6 +23,7 @@ export default function FileTreeNode({
   selectedPath,
   onToggle,
   onOpenFile,
+  onContextMenu,
 }: FileTreeNodeProps) {
   const isExpanded = expandedPaths.has(node.path);
   const isLoading = loadingPaths.has(node.path);
@@ -35,12 +37,19 @@ export default function FileTreeNode({
     }
   }, [node.isDirectory, node.path, onToggle, onOpenFile]);
 
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onContextMenu(e, node);
+  }, [node, onContextMenu]);
+
   return (
     <div>
       <div
         className={`${styles.row} ${isSelected ? styles.rowSelected : ''}`}
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
         onClick={handleClick}
+        onContextMenu={handleContextMenu}
         title={node.path}
       >
         {/* Chevron for directories */}
@@ -86,6 +95,7 @@ export default function FileTreeNode({
               selectedPath={selectedPath}
               onToggle={onToggle}
               onOpenFile={onOpenFile}
+              onContextMenu={onContextMenu}
             />
           ))}
         </div>
