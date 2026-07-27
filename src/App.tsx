@@ -1,12 +1,13 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { listen, emit } from '@tauri-apps/api/event';
-import { confirm, open as openDialog } from '@tauri-apps/plugin-dialog';
-import { stat, readTextFile, readDir, remove, rename, mkdir, writeTextFile } from '@tauri-apps/plugin-fs';
-import { join, dirname } from '@tauri-apps/api/path';
+import { confirm } from '@tauri-apps/plugin-dialog';
+import { stat, readTextFile } from '@tauri-apps/plugin-fs';
 import { useFileWatcher } from './hooks/useFileWatcher';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 
 import { useTabs } from './hooks/useTabs';
+import { useFolder } from './hooks/useFolder';
+import { useTabOperations } from './hooks/useTabOperations';
 import { useFileOperations } from './hooks/useFileOperations';
 import { useTheme } from './hooks/useTheme';
 import { useScrollSync } from './hooks/useScrollSync';
@@ -21,7 +22,7 @@ import Toolbar from './components/Toolbar/Toolbar';
 import TabBar from './components/TabBar/TabBar';
 import StatusBar from './components/StatusBar/StatusBar';
 
-import type { EditorMode, FileTreeNode } from './types';
+import type { EditorMode } from './types';
 import { isMarkdownFile } from './utils/languageLoader';
 import styles from './App.module.css';
 
@@ -37,6 +38,53 @@ export default function App() {
   } = useTabs();
   const { toggleTheme, isDark } = useTheme();
   const editorRef = useRef<MarkdownEditorAPI>(null);
+
+  // ── 标签页切换时保存/恢复滚动位置 ──
+  const scrollCache = useRef<Record<string, number>>({});
+  const previewScrollCache = useRef<Record<string, number>>({});
+
+  const handleSwitchTab = useCallback((tabId: string) => {
+    // 保存当前编辑器和预览的滚动位置
+    const view = editorRef.current?.getView();
+    if (view && activeId) {
+      scrollCache.current[activeId] = view.scrollDOM.scrollTop;
+    }
+    if (previewScrollRef.current && activeId) {
+      previewScrollCache.current[activeId] = previewScrollRef.current.scrollTop;
+    }
+    switchTab(tabId);
+  }, [activeId, switchTab]);
+
+  // 切换标签页后恢复编辑器滚动位置
+  useEffect(() => {
+    const saved = scrollCache.current[activeId];
+    if (saved === undefined) return;
+    // 等 CodeMirror 完成内部布局后再设置滚动位置
+    const timer = setTimeout(() => {
+      const view = editorRef.current?.getView();
+      if (view) {
+        view.requestMeasure({
+          read() { /* no-op */ },
+          write() {
+            view.scrollDOM.scrollTop = saved;
+          },
+        });
+      }
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [activeId]);
+
+  // 切换标签页后恢复预览滚动位置
+  useEffect(() => {
+    const saved = previewScrollCache.current[activeId];
+    if (saved === undefined) return;
+    const id = requestAnimationFrame(() => {
+      if (previewScrollRef.current) {
+        previewScrollRef.current.scrollTop = saved;
+      }
+    });
+    return () => cancelAnimationFrame(id);
+  }, [activeId]);
 
   // ── 自定义搜索对话框状态 ──
   const [searchDialog, setSearchDialog] = useState<{
@@ -64,234 +112,30 @@ export default function App() {
   );
 
   // ── 文件夹功能 ──
-  const FOLDER_SESSION_KEY = 'editor-folder-path';
-  const [folderPath, setFolderPath] = useState<string | null>(() => {
-    try {
-      return localStorage.getItem(FOLDER_SESSION_KEY) || null;
-    } catch { return null; }
+  const {
+    folderPath,
+    fileTree,
+    expandedPaths,
+    loadingPaths,
+    sidebarVisible,
+    handleOpenFolder,
+    handleToggleFolder,
+    handleOpenFileFromTree,
+    handleCloseFolder,
+    handleRefreshTree,
+    handleDeleteFile,
+    handleRenameFile,
+    handleNewFile,
+    handleNewFolder,
+  } = useFolder({
+    tabs,
+    activeTab,
+    switchTab,
+    replaceActiveTab,
+    openNewTab,
+    closeTab,
+    updateTabPath,
   });
-  const [fileTree, setFileTree] = useState<FileTreeNode[]>([]);
-  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
-  const [loadingPaths, setLoadingPaths] = useState<Set<string>>(new Set());
-  const [sidebarVisible, setSidebarVisible] = useState(folderPath !== null);
-
-  /** 忽略的目录名 */
-  const IGNORE_PATTERNS = ['.git', 'node_modules', '.DS_Store', 'target'];
-
-  /** 读取目录内容 → FileTreeNode[] */
-  const loadDirEntries = useCallback(async (dirPath: string): Promise<FileTreeNode[]> => {
-    try {
-      const entries = await readDir(dirPath);
-      const nodes: FileTreeNode[] = [];
-      for (const entry of entries) {
-        if (IGNORE_PATTERNS.includes(entry.name)) continue;
-        const fullPath = await join(dirPath, entry.name);
-        nodes.push({
-          name: entry.name,
-          path: fullPath,
-          isDirectory: entry.isDirectory,
-          isSymlink: entry.isSymlink,
-        });
-      }
-      nodes.sort((a, b) => {
-        if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1;
-        return a.name.localeCompare(b.name, undefined, { sensitivity: 'base' });
-      });
-      return nodes;
-    } catch {
-      return [];
-    }
-  }, []);
-
-  /** 打开文件夹 */
-  const handleOpenFolder = useCallback(async () => {
-    const selected = await openDialog({
-      directory: true,
-      multiple: false,
-      title: '选择文件夹',
-    });
-    if (!selected) return;
-    const path = selected as string;
-    setFolderPath(path);
-    localStorage.setItem(FOLDER_SESSION_KEY, path);
-    setExpandedPaths(new Set());
-    setLoadingPaths(new Set());
-    setSidebarVisible(true);
-    const entries = await loadDirEntries(path);
-    setFileTree(entries);
-  }, [loadDirEntries]);
-
-  /** 展开/折叠目录 */
-  const handleToggleFolder = useCallback(async (path: string) => {
-    if (loadingPaths.has(path)) return;
-
-    if (expandedPaths.has(path)) {
-      // 折叠
-      setExpandedPaths(prev => {
-        const next = new Set(prev);
-        next.delete(path);
-        return next;
-      });
-      return;
-    }
-
-    // 展开：加载子目录
-    setLoadingPaths(prev => new Set(prev).add(path));
-    const children = await loadDirEntries(path);
-    setFileTree(prev => {
-      // 原地更新树中目标节点的 children
-      const update = (nodes: FileTreeNode[]): FileTreeNode[] =>
-        nodes.map(n => n.path === path ? { ...n, children } : n.children ? { ...n, children: update(n.children) } : n);
-      return update(prev);
-    });
-    setExpandedPaths(prev => new Set(prev).add(path));
-    setLoadingPaths(prev => {
-      const next = new Set(prev);
-      next.delete(path);
-      return next;
-    });
-  }, [expandedPaths, loadingPaths, loadDirEntries]);
-
-  /** 从文件树打开文件 */
-  const handleOpenFileFromTree = useCallback(async (filePath: string) => {
-    // 检查文件是否已在其他标签页中打开
-    const existing = tabs.find(t => t.path === filePath);
-    if (existing) {
-      switchTab(existing.id);
-      return;
-    }
-
-    try {
-      const content = await readTextFile(filePath);
-      let mtime: number | undefined;
-      try {
-        const info = await stat(filePath);
-        if (info.mtime) mtime = info.mtime.getTime();
-      } catch { /* ignore */ }
-
-      const tab = activeTab;
-      if (!tab.isModified && tab.content === '' && !tab.path) {
-        replaceActiveTab(filePath, content, mtime);
-      } else {
-        openNewTab(filePath, content, mtime ?? null);
-      }
-    } catch {
-      // 读取失败，静默忽略
-    }
-  }, [tabs, activeTab, switchTab, replaceActiveTab, openNewTab]);
-
-  /** 关闭文件夹 */
-  const handleCloseFolder = useCallback(() => {
-    setFolderPath(null);
-    setFileTree([]);
-    setExpandedPaths(new Set());
-    setSidebarVisible(false);
-    localStorage.removeItem(FOLDER_SESSION_KEY);
-  }, []);
-
-  /** 刷新文件树 */
-  const handleRefreshTree = useCallback(async () => {
-    if (!folderPath) return;
-    const expanded = new Set(expandedPaths);
-    // 重新加载根
-    const rootEntries = await loadDirEntries(folderPath);
-    // 重新加载所有已展开的目录
-    const reloadExpanded = async (nodes: FileTreeNode[]): Promise<FileTreeNode[]> => {
-      return Promise.all(nodes.map(async (node) => {
-        if (expanded.has(node.path)) {
-          const children = await loadDirEntries(node.path);
-          return { ...node, children: await reloadExpanded(children) };
-        }
-        return node;
-      }));
-    };
-    const updated = await reloadExpanded(rootEntries);
-    setFileTree(updated);
-  }, [folderPath, expandedPaths, loadDirEntries]);
-
-  // ── 文件树操作：删除、重命名、新建 ──
-
-  const handleDeleteFile = useCallback(async (path: string, isDirectory: boolean) => {
-    const nodeName = path.split(/[/\\]/).pop() || path;
-    const ok = await confirm(
-      `确定删除${isDirectory ? '目录' : '文件'}"${nodeName}"吗？${isDirectory ? '目录内所有内容将被删除。' : ''}`,
-      { title: '删除确认', kind: 'warning' },
-    );
-    if (!ok) return;
-
-    try {
-      await remove(path, isDirectory ? { recursive: true } : undefined);
-      // 关闭所有指向该路径的标签页
-      const affected = tabs.filter(t => t.path === path || t.path?.startsWith(path + '/') || t.path?.startsWith(path + '\\'));
-      affected.forEach(t => closeTab(t.id));
-    } catch (e) {
-      console.error('删除失败:', e);
-    }
-
-    // 刷新文件树
-    if (folderPath) {
-      const entries = await loadDirEntries(folderPath);
-      const reloadExpanded = async (nodes: FileTreeNode[]): Promise<FileTreeNode[]> => {
-        return Promise.all(nodes.map(async (node) => {
-          if (expandedPaths.has(node.path)) {
-            const children = await loadDirEntries(node.path);
-            return { ...node, children: await reloadExpanded(children) };
-          }
-          return node;
-        }));
-      };
-      setFileTree(await reloadExpanded(entries));
-    }
-  }, [tabs, closeTab, expandedPaths, folderPath, loadDirEntries]);
-
-  const handleRenameFile = useCallback(async (oldPath: string, newName: string) => {
-    try {
-      const parentDir = await dirname(oldPath);
-      const newPath = await join(parentDir, newName);
-      await rename(oldPath, newPath);
-      // 更新所有打开标签页中的路径
-      for (const tab of tabs) {
-        if (tab.path === oldPath) {
-          updateTabPath(tab.id, newPath);
-        }
-      }
-    } catch (e) {
-      console.error('重命名失败:', e);
-    }
-
-    // 刷新文件树
-    handleRefreshTree();
-  }, [tabs, updateTabPath, handleRefreshTree]);
-
-  const handleNewFile = useCallback(async (parentDir: string, name: string) => {
-    try {
-      const filePath = await join(parentDir, name);
-      await writeTextFile(filePath, '');
-    } catch (e) {
-      console.error('新建文件失败:', e);
-    }
-    handleRefreshTree();
-  }, [handleRefreshTree]);
-
-  const handleNewFolder = useCallback(async (parentDir: string, name: string) => {
-    try {
-      const dirPath = await join(parentDir, name);
-      await mkdir(dirPath);
-    } catch (e) {
-      console.error('新建文件夹失败:', e);
-    }
-    handleRefreshTree();
-  }, [handleRefreshTree]);
-
-  // 启动时加载根目录（session 恢复）
-  const folderInitRef = useRef(false);
-  useEffect(() => {
-    if (folderInitRef.current || !folderPath) return;
-    folderInitRef.current = true;
-    loadDirEntries(folderPath).then(setFileTree);
-  }, [folderPath, loadDirEntries]);
-
-  // File operation callbacks
   const handleFileOpened = useCallback(
     async (newContent: string, path: string) => {
       // 检查文件是否已在其他标签页中打开
@@ -541,79 +385,14 @@ export default function App() {
     await saveFileAs(activeTab.content);
   }, [activeTab, saveFileAs]);
 
-  const handleCloseTab = useCallback(async (tabId: string) => {
-    const tab = tabs.find(t => t.id === tabId);
-    if (tab?.isModified) {
-      const ok = await confirm(
-        `"${tab.title}" 有未保存的更改，确定关闭吗？`,
-        { title: '关闭标签页', kind: 'warning' },
-      );
-      if (!ok) return;
-    }
-    closeTab(tabId);
-  }, [tabs, closeTab]);
-
-  const handleCloseOthers = useCallback(async (tabId: string) => {
-    const others = tabs.filter(t => t.id !== tabId);
-    const hasModified = others.some(t => t.isModified);
-    if (hasModified) {
-      const ok = await confirm(
-        '有其他未保存的标签页，确定关闭吗？',
-        { title: '关闭其他标签页', kind: 'warning' },
-      );
-      if (!ok) return;
-    }
-    // Switch to the kept tab first
-    if (activeId !== tabId) switchTab(tabId);
-    // Close all except the target
-    others.forEach(t => closeTab(t.id));
-  }, [tabs, activeId, switchTab, closeTab]);
-
-  const handleCloseRight = useCallback(async (tabId: string) => {
-    const idx = tabs.findIndex(t => t.id === tabId);
-    if (idx < 0) return;
-    const right = tabs.slice(idx + 1);
-    const hasModified = right.some(t => t.isModified);
-    if (hasModified) {
-      const ok = await confirm(
-        '右侧有未保存的标签页，确定关闭吗？',
-        { title: '关闭右侧标签页', kind: 'warning' },
-      );
-      if (!ok) return;
-    }
-    right.forEach(t => closeTab(t.id));
-  }, [tabs, closeTab]);
-
-  const handleCloseLeft = useCallback(async (tabId: string) => {
-    const idx = tabs.findIndex(t => t.id === tabId);
-    if (idx < 0) return;
-    const left = tabs.slice(0, idx);
-    const hasModified = left.some(t => t.isModified);
-    if (hasModified) {
-      const ok = await confirm(
-        '左侧有未保存的标签页，确定关闭吗？',
-        { title: '关闭左侧标签页', kind: 'warning' },
-      );
-      if (!ok) return;
-    }
-    left.forEach(t => closeTab(t.id));
-  }, [tabs, closeTab]);
-
-  const handleCloseAll = useCallback(async () => {
-    const modified = tabs.filter(t => t.isModified);
-    if (modified.length > 0) {
-      const names = modified.map(t => t.title).join(', ');
-      const ok = await confirm(
-        `以下标签页有未保存的更改：${names}，确定关闭全部吗？`,
-        { title: '关闭全部标签页', kind: 'warning' },
-      );
-      if (!ok) return;
-    }
-    // Create a fresh empty tab
-    openNewTab(null, '');
-    // Close all existing tabs
-    tabs.forEach(t => closeTab(t.id));
-  }, [tabs, openNewTab, closeTab]);
+  // ── 标签页操作 ──
+  const {
+    handleCloseTab,
+    handleCloseOthers,
+    handleCloseRight,
+    handleCloseLeft,
+    handleCloseAll,
+  } = useTabOperations({ tabs, activeId, switchTab, closeTab, openNewTab });
 
   const currentIsMarkdown = isMarkdownFile(activeTab.path);
 
@@ -719,7 +498,7 @@ export default function App() {
       <TabBar
         tabs={tabs}
         activeId={activeId}
-        onSwitch={switchTab}
+        onSwitch={handleSwitchTab}
         onClose={handleCloseTab}
         onCloseOthers={handleCloseOthers}
         onCloseRight={handleCloseRight}
