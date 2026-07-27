@@ -17,10 +17,10 @@ export function useFileOperations({ onFileOpened, onFileSaved }: UseFileOperatio
       setError(null);
       const selected = await open({
         multiple: false,
-        filters: [{
-          name: 'Markdown 文件',
-          extensions: ['md', 'mdx', 'markdown', 'txt'],
-        }],
+        filters: [
+          { name: '所有文件', extensions: ['*'] },
+          { name: 'Markdown 文件', extensions: ['md', 'mdx', 'markdown', 'txt'] },
+        ],
       });
       if (selected) {
         const content = await readTextFile(selected);
@@ -51,10 +51,10 @@ export function useFileOperations({ onFileOpened, onFileSaved }: UseFileOperatio
     try {
       setError(null);
       const selected = await save({
-        filters: [{
-          name: 'Markdown 文件',
-          extensions: ['md', 'mdx', 'markdown'],
-        }],
+        filters: [
+          { name: '所有文件', extensions: ['*'] },
+          { name: 'Markdown 文件', extensions: ['md', 'mdx', 'markdown'] },
+        ],
         defaultPath: '未命名.md',
       });
       if (selected) {

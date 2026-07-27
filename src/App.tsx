@@ -22,6 +22,7 @@ import TabBar from './components/TabBar/TabBar';
 import StatusBar from './components/StatusBar/StatusBar';
 
 import type { EditorMode, FileTreeNode } from './types';
+import { isMarkdownFile } from './utils/languageLoader';
 import styles from './App.module.css';
 
 export default function App() {
@@ -153,6 +154,13 @@ export default function App() {
 
   /** 从文件树打开文件 */
   const handleOpenFileFromTree = useCallback(async (filePath: string) => {
+    // 检查文件是否已在其他标签页中打开
+    const existing = tabs.find(t => t.path === filePath);
+    if (existing) {
+      switchTab(existing.id);
+      return;
+    }
+
     try {
       const content = await readTextFile(filePath);
       let mtime: number | undefined;
@@ -170,7 +178,7 @@ export default function App() {
     } catch {
       // 读取失败，静默忽略
     }
-  }, [activeTab, replaceActiveTab, openNewTab]);
+  }, [tabs, activeTab, switchTab, replaceActiveTab, openNewTab]);
 
   /** 关闭文件夹 */
   const handleCloseFolder = useCallback(() => {
@@ -212,6 +220,13 @@ export default function App() {
   // File operation callbacks
   const handleFileOpened = useCallback(
     async (newContent: string, path: string) => {
+      // 检查文件是否已在其他标签页中打开
+      const existing = tabs.find(t => t.path === path);
+      if (existing) {
+        switchTab(existing.id);
+        return;
+      }
+
       // 获取文件 mtime
       let mtime: number | undefined;
       try {
@@ -227,7 +242,7 @@ export default function App() {
         openNewTab(path, newContent, mtime ?? null);
       }
     },
-    [activeTab, replaceActiveTab, openNewTab, updateActiveMtime],
+    [tabs, activeTab, switchTab, replaceActiveTab, openNewTab, updateActiveMtime],
   );
 
   const handleFileSaved = useCallback(
@@ -464,13 +479,78 @@ export default function App() {
     closeTab(tabId);
   }, [tabs, closeTab]);
 
+  const handleCloseOthers = useCallback(async (tabId: string) => {
+    const others = tabs.filter(t => t.id !== tabId);
+    const hasModified = others.some(t => t.isModified);
+    if (hasModified) {
+      const ok = await confirm(
+        '有其他未保存的标签页，确定关闭吗？',
+        { title: '关闭其他标签页', kind: 'warning' },
+      );
+      if (!ok) return;
+    }
+    // Switch to the kept tab first
+    if (activeId !== tabId) switchTab(tabId);
+    // Close all except the target
+    others.forEach(t => closeTab(t.id));
+  }, [tabs, activeId, switchTab, closeTab]);
+
+  const handleCloseRight = useCallback(async (tabId: string) => {
+    const idx = tabs.findIndex(t => t.id === tabId);
+    if (idx < 0) return;
+    const right = tabs.slice(idx + 1);
+    const hasModified = right.some(t => t.isModified);
+    if (hasModified) {
+      const ok = await confirm(
+        '右侧有未保存的标签页，确定关闭吗？',
+        { title: '关闭右侧标签页', kind: 'warning' },
+      );
+      if (!ok) return;
+    }
+    right.forEach(t => closeTab(t.id));
+  }, [tabs, closeTab]);
+
+  const handleCloseLeft = useCallback(async (tabId: string) => {
+    const idx = tabs.findIndex(t => t.id === tabId);
+    if (idx < 0) return;
+    const left = tabs.slice(0, idx);
+    const hasModified = left.some(t => t.isModified);
+    if (hasModified) {
+      const ok = await confirm(
+        '左侧有未保存的标签页，确定关闭吗？',
+        { title: '关闭左侧标签页', kind: 'warning' },
+      );
+      if (!ok) return;
+    }
+    left.forEach(t => closeTab(t.id));
+  }, [tabs, closeTab]);
+
+  const handleCloseAll = useCallback(async () => {
+    const modified = tabs.filter(t => t.isModified);
+    if (modified.length > 0) {
+      const names = modified.map(t => t.title).join(', ');
+      const ok = await confirm(
+        `以下标签页有未保存的更改：${names}，确定关闭全部吗？`,
+        { title: '关闭全部标签页', kind: 'warning' },
+      );
+      if (!ok) return;
+    }
+    // Create a fresh empty tab
+    openNewTab(null, '');
+    // Close all existing tabs
+    tabs.forEach(t => closeTab(t.id));
+  }, [tabs, openNewTab, closeTab]);
+
+  const currentIsMarkdown = isMarkdownFile(activeTab.path);
+
   const cycleMode = useCallback(() => {
+    if (!currentIsMarkdown) return;
     setMode(prev => {
       const modes: EditorMode[] = ['edit', 'preview', 'split'];
       const idx = modes.indexOf(prev);
       return modes[(idx + 1) % modes.length];
     });
-  }, []);
+  }, [currentIsMarkdown]);
 
   // ── 侧边栏拖拽调整宽度 ──
   const [sidebarWidth, setSidebarWidth] = useState(240);
@@ -499,7 +579,7 @@ export default function App() {
   }, [sidebarWidth]);
 
   const showEditor = mode === 'edit' || mode === 'split';
-  const showPreview = mode === 'preview' || mode === 'split';
+  const showPreview = currentIsMarkdown && (mode === 'preview' || mode === 'split');
 
   // ── Layout: 构建侧边栏和编辑器区域 ──
   const sidebar = sidebarVisible && folderPath ? (
@@ -510,6 +590,7 @@ export default function App() {
           fileTree={fileTree}
           expandedPaths={expandedPaths}
           loadingPaths={loadingPaths}
+          selectedPath={activeTab.path}
           onToggleFolder={handleToggleFolder}
           onOpenFile={handleOpenFileFromTree}
           onCloseFolder={handleCloseFolder}
@@ -549,6 +630,7 @@ export default function App() {
         onToggleMode={cycleMode}
         currentMode={mode}
         isDark={isDark}
+        isMarkdown={currentIsMarkdown}
         currentFilePath={activeTab.path}
         settings={settings}
         onUpdateSettings={updateSettings}
@@ -561,6 +643,10 @@ export default function App() {
         activeId={activeId}
         onSwitch={switchTab}
         onClose={handleCloseTab}
+        onCloseOthers={handleCloseOthers}
+        onCloseRight={handleCloseRight}
+        onCloseLeft={handleCloseLeft}
+        onCloseAll={handleCloseAll}
       />
 
       <div className={styles.contentArea}>

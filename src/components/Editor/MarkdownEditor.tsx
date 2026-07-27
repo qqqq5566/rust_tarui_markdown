@@ -1,10 +1,11 @@
-import { forwardRef, useImperativeHandle, useCallback, useRef, useState } from 'react';
+import { forwardRef, useImperativeHandle, useCallback, useRef, useState, useEffect } from 'react';
 import CodeMirror from '@uiw/react-codemirror';
-import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
-import { languages } from '@codemirror/language-data';
 import { EditorView, keymap } from '@codemirror/view';
 import type { Extension } from '@codemirror/state';
 import { undo, redo } from '@codemirror/commands';
+import { syntaxHighlighting, defaultHighlightStyle } from '@codemirror/language';
+import { oneDarkHighlightStyle } from '@codemirror/theme-one-dark';
+import { loadLanguageExtension } from '../../utils/languageLoader';
 import ContextMenu from './ContextMenu';
 import type { ContextMenuItem } from './ContextMenu';
 import {
@@ -103,6 +104,16 @@ const MarkdownEditor = forwardRef<MarkdownEditorAPI, MarkdownEditorProps>(
     // 保持最新 path 引用，避免 extensions 闭包陈旧
     const pathRef = useRef(currentPath);
     pathRef.current = currentPath;
+
+    // 根据文件路径异步加载语言扩展
+    const [languageExtension, setLanguageExtension] = useState<Extension | null>(null);
+    useEffect(() => {
+      let cancelled = false;
+      loadLanguageExtension(currentPath).then(ext => {
+        if (!cancelled) setLanguageExtension(ext);
+      });
+      return () => { cancelled = true; };
+    }, [currentPath]);
 
     const getView = useCallback((): EditorView | null => {
       return editorRef.current;
@@ -581,7 +592,10 @@ const MarkdownEditor = forwardRef<MarkdownEditorAPI, MarkdownEditorProps>(
 
     const extensions: Extension[] = [
       pasteHandler,
-      markdown({ base: markdownLanguage, codeLanguages: languages }),
+      ...(languageExtension ? [languageExtension] : []),
+      isDark
+        ? syntaxHighlighting(oneDarkHighlightStyle)
+        : syntaxHighlighting(defaultHighlightStyle),
       keymap.of([
         {
           key: 'Ctrl-b',
@@ -627,6 +641,11 @@ const MarkdownEditor = forwardRef<MarkdownEditorAPI, MarkdownEditorProps>(
         },
       ]),
     ];
+
+    // 语言扩展未加载完成时不渲染编辑器
+    if (!languageExtension) {
+      return <div className={styles.editorContainer} />;
+    }
 
     return (
       <div className={styles.editorContainer} onContextMenu={handleContextMenu}>

@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import type { FileTreeNode as FileTreeNodeType } from '../../types';
 import { IconFolder, IconFolderOpen, IconFile } from '../Icons';
+import { isMarkdownFile } from '../../utils/languageLoader';
 import styles from './FileTreeNode.module.css';
 
 interface FileTreeNodeProps {
@@ -8,14 +9,9 @@ interface FileTreeNodeProps {
   depth: number;
   expandedPaths: Set<string>;
   loadingPaths: Set<string>;
+  selectedPath: string | null;
   onToggle: (path: string) => void;
   onOpenFile: (path: string) => void;
-}
-
-/** 判断是否为 Markdown 文件 */
-function isMarkdownFile(name: string): boolean {
-  const ext = name.split('.').pop()?.toLowerCase();
-  return ext === 'md' || ext === 'mdx' || ext === 'markdown' || ext === 'txt';
 }
 
 export default function FileTreeNode({
@@ -23,11 +19,13 @@ export default function FileTreeNode({
   depth,
   expandedPaths,
   loadingPaths,
+  selectedPath,
   onToggle,
   onOpenFile,
 }: FileTreeNodeProps) {
   const isExpanded = expandedPaths.has(node.path);
   const isLoading = loadingPaths.has(node.path);
+  const isSelected = selectedPath === node.path;
 
   const handleClick = useCallback(() => {
     if (node.isDirectory) {
@@ -40,7 +38,7 @@ export default function FileTreeNode({
   return (
     <div>
       <div
-        className={styles.row}
+        className={`${styles.row} ${isSelected ? styles.rowSelected : ''}`}
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
         onClick={handleClick}
         title={node.path}
@@ -85,6 +83,7 @@ export default function FileTreeNode({
               depth={depth + 1}
               expandedPaths={expandedPaths}
               loadingPaths={loadingPaths}
+              selectedPath={selectedPath}
               onToggle={onToggle}
               onOpenFile={onOpenFile}
             />

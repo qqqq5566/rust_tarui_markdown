@@ -35,6 +35,7 @@ interface ToolbarProps {
   onToggleMode: () => void;
   currentMode: EditorMode;
   isDark: boolean;
+  isMarkdown: boolean;
   currentFilePath: string | null;
   // 设置
   settings: EditorSettings;
@@ -52,7 +53,7 @@ export default function Toolbar({
   onLink, onImage,
   onSearch, onReplace,
   onToggleTheme, onToggleMode,
-  currentMode, isDark,
+  currentMode, isDark, isMarkdown,
   settings, onUpdateSettings, settingsOpen, onToggleSettings,
 }: ToolbarProps) {
   const modeLabels: Record<EditorMode, string> = {
@@ -100,58 +101,60 @@ export default function Toolbar({
       </div>
       <div className={styles.separator} />
 
-      {/* 文本格式 */}
-      <div className={styles.group}>
-        <button className={styles.button} onClick={onBold} title="加粗 (Ctrl+B)">
-          <IconBold size={16} />
-        </button>
-        <button className={styles.button} onClick={onItalic} title="斜体 (Ctrl+I)">
-          <IconItalic size={16} />
-        </button>
-        <button className={styles.button} onClick={onStrikethrough} title="删除线">
-          <IconStrikethrough size={16} />
-        </button>
-        <button className={styles.button} onClick={onHeading} title="标题 (Ctrl+Shift+H)">
-          <IconHeading size={16} />
-        </button>
-      </div>
+      {isMarkdown && (
+        <>
+          {/* 文本格式 */}
+          <div className={styles.group}>
+            <button className={styles.button} onClick={onBold} title="加粗 (Ctrl+B)">
+              <IconBold size={16} />
+            </button>
+            <button className={styles.button} onClick={onItalic} title="斜体 (Ctrl+I)">
+              <IconItalic size={16} />
+            </button>
+            <button className={styles.button} onClick={onStrikethrough} title="删除线">
+              <IconStrikethrough size={16} />
+            </button>
+            <button className={styles.button} onClick={onHeading} title="标题 (Ctrl+Shift+H)">
+              <IconHeading size={16} />
+            </button>
+          </div>
 
-      <div className={styles.separator} />
+          <div className={styles.separator} />
 
-      {/* 块元素 */}
-      <div className={styles.group}>
-        <button className={styles.button} onClick={onCodeBlock} title="代码块 (Ctrl+Shift+K)">
-          <IconCode size={16} />
-        </button>
-        <button className={styles.button} onClick={onInlineCode} title="行内代码">
-          <IconCodeInline size={16} />
-        </button>
-        <button className={styles.button} onClick={onUnorderedList} title="无序列表">
-          <IconListUnordered size={16} />
-        </button>
-        <button className={styles.button} onClick={onOrderedList} title="有序列表">
-          <IconListOrdered size={16} />
-        </button>
-        <button className={styles.button} onClick={onBlockquote} title="引用">
-          <IconQuote size={16} />
-        </button>
-      </div>
+          {/* 块元素 */}
+          <div className={styles.group}>
+            <button className={styles.button} onClick={onCodeBlock} title="代码块 (Ctrl+Shift+K)">
+              <IconCode size={16} />
+            </button>
+            <button className={styles.button} onClick={onInlineCode} title="行内代码">
+              <IconCodeInline size={16} />
+            </button>
+            <button className={styles.button} onClick={onUnorderedList} title="无序列表">
+              <IconListUnordered size={16} />
+            </button>
+            <button className={styles.button} onClick={onOrderedList} title="有序列表">
+              <IconListOrdered size={16} />
+            </button>
+            <button className={styles.button} onClick={onBlockquote} title="引用">
+              <IconQuote size={16} />
+            </button>
+          </div>
 
-      <div className={styles.separator} />
+          <div className={styles.separator} />
 
-      {/* 插入 */}
-      <div className={styles.group}>
-        <button className={styles.button} onClick={onLink} title="链接 (Ctrl+Shift+L)">
-          <IconLink size={16} />
-        </button>
-        <button className={styles.button} onClick={onImage} title="图片 (Ctrl+Shift+I)">
-          <IconImage size={16} />
-        </button>
-      </div>
+          {/* 插入 */}
+          <div className={styles.group}>
+            <button className={styles.button} onClick={onLink} title="链接 (Ctrl+Shift+L)">
+              <IconLink size={16} />
+            </button>
+            <button className={styles.button} onClick={onImage} title="图片 (Ctrl+Shift+I)">
+              <IconImage size={16} />
+            </button>
+          </div>
 
-      <div className={styles.separator} />
-
-      
+          <div className={styles.separator} />
+        </>
+      )}
 
       <div className={styles.spacer} />
 

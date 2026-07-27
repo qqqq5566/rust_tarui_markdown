@@ -2,7 +2,6 @@ import { forwardRef, useMemo, useCallback, useState, useRef } from 'react';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import hljs from 'highlight.js';
-import 'highlight.js/styles/github-dark.css';
 import ContextMenu from '../Editor/ContextMenu';
 import type { ContextMenuItem } from '../Editor/ContextMenu';
 import styles from './MarkdownPreview.module.css';

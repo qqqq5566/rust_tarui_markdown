@@ -8,6 +8,7 @@ interface FileExplorerPanelProps {
   fileTree: FileTreeNodeType[];
   expandedPaths: Set<string>;
   loadingPaths: Set<string>;
+  selectedPath: string | null;
   onToggleFolder: (path: string) => void;
   onOpenFile: (path: string) => void;
   onCloseFolder: () => void;
@@ -25,6 +26,7 @@ export default function FileExplorerPanel({
   fileTree,
   expandedPaths,
   loadingPaths,
+  selectedPath,
   onToggleFolder,
   onOpenFile,
   onCloseFolder,
@@ -80,6 +82,7 @@ export default function FileExplorerPanel({
               depth={0}
               expandedPaths={expandedPaths}
               loadingPaths={loadingPaths}
+              selectedPath={selectedPath}
               onToggle={onToggleFolder}
               onOpenFile={onOpenFile}
             />

@@ -17,6 +17,14 @@
   background-color: var(--sidebar-hover);
 }
 
+.rowSelected {
+  background-color: var(--sidebar-active);
+}
+
+.rowSelected:hover {
+  background-color: var(--sidebar-active);
+}
+
 .chevron {
   width: 16px;
   height: 16px;
