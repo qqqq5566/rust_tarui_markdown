@@ -93,6 +93,13 @@ npm run tauri build
 
 构建产物在 `src-tauri/target/release/bundle/` 目录下。
 
+## 截图
+## 截图
+
+![分屏预览](img/6c55dbad-5e06-4ee9-b2e5-7de25e0c178d.png)
+![暗色主题](img/1c9a7389-e750-4d31-bb54-d60fd2960405.png)
+![目录树](img/b7173ddd-e32a-460d-b4ac-ce58c1e3f2d6.png)
+
 ## 快捷键
 
 ### 文件操作
